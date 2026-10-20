@@ -1,0 +1,53 @@
+
+dataset: olist_orders
+version: 1
+
+description: >
+  Contract for the Olist orders source dataset.
+  Initial contract; refine against the downloaded source files.
+
+layer: bronze
+format: csv
+
+columns:
+  - name: order_id
+    logical_type: string
+    nullable: false
+
+  - name: customer_id
+    logical_type: string
+    nullable: false
+
+  - name: order_status
+    logical_type: string
+    nullable: false
+
+  - name: order_purchase_timestamp
+    logical_type: timestamp
+    nullable: false
+
+primary_key:
+  - order_id
+
+quality_rules:
+  - id: order_id_not_null
+    type: not_null
+    column: order_id
+
+  - id: order_id_unique
+    type: unique
+    columns:
+      - order_id
+
+  - id: order_status_allowed
+    type: accepted_values
+    column: order_status
+    values:
+      - created
+      - approved
+      - invoiced
+      - processing
+      - shipped
+      - delivered
+      - unavailable
+      - canceled

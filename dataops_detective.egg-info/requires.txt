@@ -1,0 +1,6 @@
+pydantic<3,>=2.10
+PyYAML<7,>=6.0
+
+[dev]
+pytest<9,>=8
+ruff<1,>=0.11
