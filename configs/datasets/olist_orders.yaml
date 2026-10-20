@@ -1,10 +1,12 @@
 
 dataset: olist_orders
-version: 1
+version: 2
 
 description: >
   Contract for the Olist orders source dataset.
-  Initial contract; refine against the downloaded source files.
+  Version 2 reflects the columns and initial nullability
+  assumptions observed in the downloaded CSV snapshot.
+  Validate these assumptions against business semantics.
 
 layer: bronze
 format: csv
@@ -26,6 +28,22 @@ columns:
     logical_type: timestamp
     nullable: false
 
+  - name: order_approved_at
+    logical_type: timestamp
+    nullable: true
+
+  - name: order_delivered_carrier_date
+    logical_type: timestamp
+    nullable: true
+
+  - name: order_delivered_customer_date
+    logical_type: timestamp
+    nullable: true
+
+  - name: order_estimated_delivery_date
+    logical_type: timestamp
+    nullable: false
+
 primary_key:
   - order_id
 
@@ -43,11 +61,11 @@ quality_rules:
     type: accepted_values
     column: order_status
     values:
-      - created
       - approved
+      - canceled
+      - created
+      - delivered
       - invoiced
       - processing
       - shipped
-      - delivered
       - unavailable
-      - canceled
