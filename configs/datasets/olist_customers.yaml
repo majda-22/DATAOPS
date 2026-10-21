@@ -1,0 +1,29 @@
+dataset: olist_customers
+version: 1
+description: Raw Olist customers. Preserve source spellings and optional fields; no
+  business cleaning is applied.
+layer: bronze
+format: csv
+columns:
+- name: customer_id
+  logical_type: string
+  nullable: false
+- name: customer_unique_id
+  logical_type: string
+  nullable: false
+- name: customer_zip_code_prefix
+  logical_type: string
+  nullable: false
+- name: customer_city
+  logical_type: string
+  nullable: false
+- name: customer_state
+  logical_type: string
+  nullable: false
+primary_key:
+- customer_id
+quality_rules:
+- id: olist_customers_minimum_rows
+  type: min_row_count
+  min_rows: 1
+foreign_keys: []

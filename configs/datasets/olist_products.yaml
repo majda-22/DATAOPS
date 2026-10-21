@@ -1,0 +1,41 @@
+dataset: olist_products
+version: 1
+description: Raw Olist products. Preserve source spellings and optional fields; no
+  business cleaning is applied.
+layer: bronze
+format: csv
+columns:
+- name: product_id
+  logical_type: string
+  nullable: false
+- name: product_category_name
+  logical_type: string
+  nullable: true
+- name: product_name_lenght
+  logical_type: integer
+  nullable: true
+- name: product_description_lenght
+  logical_type: integer
+  nullable: true
+- name: product_photos_qty
+  logical_type: integer
+  nullable: true
+- name: product_weight_g
+  logical_type: integer
+  nullable: true
+- name: product_length_cm
+  logical_type: integer
+  nullable: true
+- name: product_height_cm
+  logical_type: integer
+  nullable: true
+- name: product_width_cm
+  logical_type: integer
+  nullable: true
+primary_key:
+- product_id
+quality_rules:
+- id: olist_products_minimum_rows
+  type: min_row_count
+  min_rows: 1
+foreign_keys: []

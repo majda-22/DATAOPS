@@ -15,7 +15,11 @@ REPORT_PATH = PROJECT_ROOT / "data" / "reports" / "olist_orders_quality.json"
 
 def main() -> None:
     contract = load_contract(CONTRACT_PATH)
-    report = evaluate_csv(DATA_PATH, contract)
+    report = evaluate_csv(
+        DATA_PATH,
+        contract,
+        reference_data={"olist_customers": DATA_PATH.parent / "olist_customers_dataset.csv"},
+    )
 
     REPORT_PATH.parent.mkdir(parents=True, exist_ok=True)
     REPORT_PATH.write_text(

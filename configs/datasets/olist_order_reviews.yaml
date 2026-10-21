@@ -1,0 +1,51 @@
+dataset: olist_order_reviews
+version: 1
+description: Raw Olist order_reviews. Preserve source spellings and optional fields;
+  no business cleaning is applied.
+layer: bronze
+format: csv
+columns:
+- name: review_id
+  logical_type: string
+  nullable: false
+- name: order_id
+  logical_type: string
+  nullable: false
+- name: review_score
+  logical_type: integer
+  nullable: false
+- name: review_comment_title
+  logical_type: string
+  nullable: true
+- name: review_comment_message
+  logical_type: string
+  nullable: true
+- name: review_creation_date
+  logical_type: timestamp
+  nullable: false
+- name: review_answer_timestamp
+  logical_type: timestamp
+  nullable: false
+primary_key:
+- review_id
+- order_id
+quality_rules:
+- id: olist_order_reviews_minimum_rows
+  type: min_row_count
+  min_rows: 1
+- id: review_score_allowed
+  type: accepted_values
+  column: review_score
+  values:
+  - '1'
+  - '2'
+  - '3'
+  - '4'
+  - '5'
+foreign_keys:
+- id: olist_order_reviews_order_id_fk
+  columns:
+  - order_id
+  reference_dataset: olist_orders
+  reference_columns:
+  - order_id

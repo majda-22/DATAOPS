@@ -1,0 +1,26 @@
+dataset: olist_sellers
+version: 1
+description: Raw Olist sellers. Preserve source spellings and optional fields; no
+  business cleaning is applied.
+layer: bronze
+format: csv
+columns:
+- name: seller_id
+  logical_type: string
+  nullable: false
+- name: seller_zip_code_prefix
+  logical_type: string
+  nullable: false
+- name: seller_city
+  logical_type: string
+  nullable: false
+- name: seller_state
+  logical_type: string
+  nullable: false
+primary_key:
+- seller_id
+quality_rules:
+- id: olist_sellers_minimum_rows
+  type: min_row_count
+  min_rows: 1
+foreign_keys: []

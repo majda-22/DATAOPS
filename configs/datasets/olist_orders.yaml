@@ -1,71 +1,63 @@
-
 dataset: olist_orders
-version: 2
-
-description: >
-  Contract for the Olist orders source dataset.
-  Version 2 reflects the columns and initial nullability
-  assumptions observed in the downloaded CSV snapshot.
-  Validate these assumptions against business semantics.
-
+version: 3
+description: Raw Olist orders. Version 3 adds minimum-volume and customer-reference
+  checks to the version-2 schema.
 layer: bronze
 format: csv
-
 columns:
-  - name: order_id
-    logical_type: string
-    nullable: false
-
-  - name: customer_id
-    logical_type: string
-    nullable: false
-
-  - name: order_status
-    logical_type: string
-    nullable: false
-
-  - name: order_purchase_timestamp
-    logical_type: timestamp
-    nullable: false
-
-  - name: order_approved_at
-    logical_type: timestamp
-    nullable: true
-
-  - name: order_delivered_carrier_date
-    logical_type: timestamp
-    nullable: true
-
-  - name: order_delivered_customer_date
-    logical_type: timestamp
-    nullable: true
-
-  - name: order_estimated_delivery_date
-    logical_type: timestamp
-    nullable: false
-
+- name: order_id
+  logical_type: string
+  nullable: false
+- name: customer_id
+  logical_type: string
+  nullable: false
+- name: order_status
+  logical_type: string
+  nullable: false
+- name: order_purchase_timestamp
+  logical_type: timestamp
+  nullable: false
+- name: order_approved_at
+  logical_type: timestamp
+  nullable: true
+- name: order_delivered_carrier_date
+  logical_type: timestamp
+  nullable: true
+- name: order_delivered_customer_date
+  logical_type: timestamp
+  nullable: true
+- name: order_estimated_delivery_date
+  logical_type: timestamp
+  nullable: false
 primary_key:
-  - order_id
-
+- order_id
 quality_rules:
-  - id: order_id_not_null
-    type: not_null
-    column: order_id
-
-  - id: order_id_unique
-    type: unique
-    columns:
-      - order_id
-
-  - id: order_status_allowed
-    type: accepted_values
-    column: order_status
-    values:
-      - approved
-      - canceled
-      - created
-      - delivered
-      - invoiced
-      - processing
-      - shipped
-      - unavailable
+- id: order_id_not_null
+  type: not_null
+  column: order_id
+- id: order_id_unique
+  type: unique
+  columns:
+  - order_id
+- id: order_status_allowed
+  type: accepted_values
+  column: order_status
+  values:
+  - approved
+  - canceled
+  - created
+  - delivered
+  - invoiced
+  - processing
+  - shipped
+  - unavailable
+- id: orders_minimum_rows
+  type: min_row_count
+  min_rows: 1
+foreign_keys:
+- id: orders_customer_fk
+  columns:
+  - customer_id
+  reference_dataset: olist_customers
+  reference_columns:
+  - customer_id

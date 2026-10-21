@@ -1,0 +1,54 @@
+dataset: olist_order_items
+version: 1
+description: Raw Olist order_items. Preserve source spellings and optional fields;
+  no business cleaning is applied.
+layer: bronze
+format: csv
+columns:
+- name: order_id
+  logical_type: string
+  nullable: false
+- name: order_item_id
+  logical_type: integer
+  nullable: false
+- name: product_id
+  logical_type: string
+  nullable: false
+- name: seller_id
+  logical_type: string
+  nullable: false
+- name: shipping_limit_date
+  logical_type: timestamp
+  nullable: false
+- name: price
+  logical_type: float
+  nullable: false
+- name: freight_value
+  logical_type: float
+  nullable: false
+primary_key:
+- order_id
+- order_item_id
+quality_rules:
+- id: olist_order_items_minimum_rows
+  type: min_row_count
+  min_rows: 1
+foreign_keys:
+- id: olist_order_items_order_id_fk
+  columns:
+  - order_id
+  reference_dataset: olist_orders
+  reference_columns:
+  - order_id
+- id: olist_order_items_product_id_fk
+  columns:
+  - product_id
+  reference_dataset: olist_products
+  reference_columns:
+  - product_id
+- id: olist_order_items_seller_id_fk
+  columns:
+  - seller_id
+  reference_dataset: olist_sellers
+  reference_columns:
+  - seller_id

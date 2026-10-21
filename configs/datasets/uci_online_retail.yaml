@@ -1,0 +1,39 @@
+dataset: uci_online_retail
+version: 1
+description: CSV export of UCI Online Retail (dataset 352), preserving its eight original
+  columns. Returns/cancellations and missing customer IDs are retained.
+layer: bronze
+format: csv
+columns:
+- name: InvoiceNo
+  logical_type: string
+  nullable: false
+- name: StockCode
+  logical_type: string
+  nullable: false
+- name: Description
+  logical_type: string
+  nullable: true
+- name: Quantity
+  logical_type: integer
+  nullable: false
+- name: InvoiceDate
+  logical_type: timestamp
+  nullable: false
+- name: UnitPrice
+  logical_type: float
+  nullable: false
+- name: CustomerID
+  logical_type: string
+  nullable: true
+- name: Country
+  logical_type: string
+  nullable: false
+primary_key: []
+keyless_reason: The raw transaction lines have no declared unique row identifier;
+  InvoiceNo and StockCode are not a guaranteed line key. Source hash plus row ordinal
+  identifies replay records.
+quality_rules:
+- id: uci_minimum_rows
+  type: min_row_count
+  min_rows: 1

@@ -12,7 +12,7 @@ LogicalType = Literal[
 ]
 
 Layer = Literal["bronze", "silver", "gold"]
-DataFormat = Literal["csv", "parquet"]
+DataFormat = Literal["csv", "parquet", "delta"]
 
 
 class ColumnContract(BaseModel):
@@ -27,13 +27,16 @@ class QualityRule(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     id: str
-    type: Literal["not_null", "unique", "accepted_values"]
+    type: Literal["not_null", "unique", "accepted_values", "min_row_count"]
     column: str | None = None
     columns: list[str] | None = None
     values: list[str] | None = None
+    min_rows: int | None = Field(default=None, ge=0)
 
     @model_validator(mode="after")
     def validate_rule_fields(self):
+        if self.type == "min_row_count" and self.min_rows is None:
+            raise ValueError("A min_row_count rule must define min_rows.")
         if self.type == "not_null" and not self.column:
             raise ValueError("A not_null rule must define 'column'.")
 
@@ -49,6 +52,25 @@ class QualityRule(BaseModel):
         return self
 
 
+class ForeignKeyContract(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: str
+    columns: list[str] = Field(min_length=1)
+    reference_dataset: str
+    reference_columns: list[str] = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def validate_columns(self):
+        if len(self.columns) != len(self.reference_columns):
+            raise ValueError("Foreign-key source and reference column counts must match.")
+        if len(set(self.columns)) != len(self.columns) or len(set(self.reference_columns)) != len(
+            self.reference_columns
+        ):
+            raise ValueError("Foreign-key columns must be unique.")
+        return self
+
+
 class DatasetContract(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -59,7 +81,9 @@ class DatasetContract(BaseModel):
     format: DataFormat
     columns: list[ColumnContract]
     primary_key: list[str]
+    keyless_reason: str | None = None
     quality_rules: list[QualityRule]
+    foreign_keys: list[ForeignKeyContract] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def validate_contract_consistency(self):
@@ -72,8 +96,8 @@ class DatasetContract(BaseModel):
         if not column_names:
             raise ValueError("A contract must define at least one column.")
 
-        if not self.primary_key:
-            raise ValueError("A contract must define a primary key.")
+        if not self.primary_key and not (self.keyless_reason or "").strip():
+            raise ValueError("A contract must define a primary key or explain keyless_reason.")
 
         if len(self.primary_key) != len(set(self.primary_key)):
             raise ValueError("Primary key columns must be unique.")
@@ -90,7 +114,7 @@ class DatasetContract(BaseModel):
                 f"Primary key columns cannot be nullable: {sorted(nullable_key_columns)}"
             )
 
-        rule_ids = [rule.id for rule in self.quality_rules]
+        rule_ids = [rule.id for rule in self.quality_rules] + [key.id for key in self.foreign_keys]
         if len(rule_ids) != len(set(rule_ids)):
             raise ValueError("Quality rule IDs must be unique.")
 
@@ -111,5 +135,9 @@ class DatasetContract(BaseModel):
 
             if rule.type == "unique" and (len(rule.columns or []) != len(set(rule.columns or []))):
                 raise ValueError(f"Rule '{rule.id}' contains duplicate unique columns.")
+
+        for key in self.foreign_keys:
+            if set(key.columns) - set(column_names):
+                raise ValueError(f"Foreign key '{key.id}' references unknown source columns.")
 
         return self
