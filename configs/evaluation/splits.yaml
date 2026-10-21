@@ -1,0 +1,22 @@
+protocol_version: 1
+status: protocol_defined_scenarios_not_yet_generated
+development_splits: [train, validation, test]
+development_fault_families:
+  - missing_column
+  - changed_logical_type
+  - null_spike
+  - duplicate_key
+  - invalid_category
+  - row_volume_drop
+  - orphan_foreign_key
+  - late_arrival
+held_out_split: held_out
+held_out_fault_families:
+  - unit_scale_change
+  - cross_dataset_delay
+  - partial_partition_overwrite
+  - timezone_shift
+out_of_domain_dataset: uci_online_retail
+policy: >
+  Allocate scenario IDs and seeds before detector tuning. Never expose ground-truth
+  labels or held-out scenario definitions to operational detector/agent connections.

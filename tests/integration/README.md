@@ -1,5 +1,12 @@
 # PostgreSQL integration tests
 
+`python scripts/dev.py test-db` starts the dedicated Compose service, applies
+all migrations, configures the operational-read-only role, and runs the query,
+permission, and recording-lifecycle tests. Use `python scripts/dev.py test-migrations`
+for the empty-database upgrade/downgrade/upgrade acceptance sequence. It creates
+and drops only a uniquely named disposable database and also verifies legacy
+integer relationships survive UUID conversion and reversal.
+
 For the existing `dataops-postgres-test` Docker container, run from Project:
 
 ```powershell

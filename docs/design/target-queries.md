@@ -19,7 +19,7 @@ Acceptance criteria:
 
 ## Q2 — Pipeline and task execution
 
-Given a pipeline run ID, retrieve the pipeline status and every associated
+Given a pipeline run UUID, resolve its unique execution name and retrieve the pipeline status and every associated
 task run, including task status, start time, finish time, and error information.
 
 Required entities:
@@ -50,6 +50,9 @@ Acceptance criteria:
 Given an incident ID, retrieve its details, supporting evidence, and related
 lineage edges so that the affected upstream and downstream datasets can
 be investigated.
+
+The shared query also accepts a pipeline-run UUID to investigate all incidents
+for that actual execution, including the valid empty result for a clean run.
 
 Required entities:
 - incidents

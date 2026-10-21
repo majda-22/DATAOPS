@@ -2,8 +2,8 @@
 
 DataOps Detective is a data observability and root-cause diagnosis project.
 Today it provides validated YAML contracts, CSV quality checks and profiling,
-eleven PostgreSQL metadata tables, five tested metadata queries, and a local
-Delta Lake demonstration. Automated ingestion, Bronze/Silver/Gold processing,
+eleven PostgreSQL metadata tables, five tested metadata queries, a recorded Olist
+observation bridge, and a local Delta Lake demonstration. Automated ingestion, Bronze/Silver/Gold processing,
 anomaly detection, diagnosis, orchestration, and the API/dashboard remain planned.
 
 ## Requirements
@@ -51,6 +51,8 @@ The hooks use the activated environment; activate it before committing.
 | `make test` | `python scripts/dev.py test` |
 | `make migrate` | `python scripts/dev.py migrate` |
 | `make test-db` | `python scripts/dev.py test-db` |
+| `make test-migrations` | `python scripts/dev.py test-migrations` |
+| `make record-olist` | `python scripts/dev.py record-olist` |
 
 Use `make PYTHON=...` if your Python executable has a different name.
 
@@ -118,7 +120,8 @@ python scripts/run_olist_quality.py
 The importer flattens CSV members into `data/raw/olist/`. The orders runners
 write JSON under `data/reports/`. A missing source file is an input/setup error;
 unit tests do not require a dataset download. Currently only orders has a
-contract and dedicated runners. Reports are not yet persisted to PostgreSQL.
+contract and dedicated runners in the original standalone workflow. The separate
+recorded observation command below persists orders metadata to PostgreSQL.
 
 ## Delta Lake smoke test
 
@@ -150,8 +153,48 @@ warning after successful assertions. This three-row demo is not a scale benchmar
 The metadata store separates `meta` operational tables from `eval` ground truth.
 The restricted-role test checks SQLSTATE 42501 when querying evaluation labels.
 See [metadata design](docs/design/metadata-schema.md) and
-[target queries](docs/design/target-queries.md). The next major feature is wiring
-Olist runs and reports into these metadata tables.
+[target queries](docs/design/target-queries.md). The recorded observation command
+below now wires Olist runs and reports into these metadata tables.
 
 See the [clean-clone verification record](docs/design/clean-clone-verification.md)
 for tested commands, results, and platform limitations.
+
+## Migration acceptance and one recorded Olist run
+
+After importing the Olist ZIP, use:
+
+```powershell
+python scripts/dev.py test-migrations
+python scripts/dev.py record-olist
+```
+
+The first command creates its own empty, uniquely named PostgreSQL database and
+checks upgrade-to-head, downgrade-to-base, and upgrade-to-head again. It also
+seeds integer run relationships at the previous revision and verifies the UUID
+migration and reversal preserve them. The temporary database is then dropped;
+your configured metadata database is not downgraded or cleared.
+
+The second command runs the integration tests (including restricted-role denial),
+then records the actual orders CSV. It registers an immutable contract version,
+creates a UUID run and UUID tasks, persists profile/schema/version/quality rows,
+and closes the run with timestamps and a consistent status. Engine PASS/FAIL is
+mapped to passed/failed in one module. Source SHA-256 identifies the snapshot.
+Failure tests check that errors close the run and retain actual incident evidence.
+
+Q1–Q5 SQL is shared by production verification and integration tests. Verification
+uses the real run for Q1–Q4. Clean orders legitimately have no failed checks or
+incidents. Q5 uses an explicitly configured evaluator connection and returns no
+cases until curated labels exist; labels are never invented from check results.
+The convenience command supplies the local database owner for this evaluator
+connection. Detectors must use the separately tested read-only restricted role.
+
+For a manually configured database, apply migrations, set DATABASE_URL and
+optionally EVALUATION_DATABASE_URL, then run `python scripts/record_olist_run.py`.
+Its JSON report is stored under `data/reports/recorded_olist_<uuid>.json`.
+
+Eight [source contracts](docs/design/dataset-contracts.md) cover the seven core
+Olist tables and a CSV export of UCI Online Retail. Foreign-key checks require
+explicit parent CSV inputs; missing parents fail instead of silently skipping.
+Logical-type enforcement remains deferred. ADRs 0001–0005 cover metadata,
+Parquet/Delta on MinIO, Spark costs, replay clocks, ground-truth splits, and
+run/status semantics; MinIO and replay scheduling are still future work.

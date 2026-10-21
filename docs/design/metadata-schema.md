@@ -1,6 +1,6 @@
 ﻿# Metadata Schema Design
 
-Status: Implementation plan
+Status: Implemented schema with migration and query acceptance tests
 
 ## 1. PostgreSQL schemas
 
@@ -27,7 +27,9 @@ Status: Implementation plan
 ## 4. Design rules
 
 - Preserve the existing initial migration.
-- Use PostgreSQL-native UUIDs for new run and incident identifiers only after defining a safe migration strategy for existing integer IDs.
+- Pipeline and task IDs and pipeline-run references use native UUIDs. Migration
+  `8d21c24a9b11` retains integer legacy IDs for reversible conversion; incident
+  entity IDs remain integers because they are not execution identifiers.
 - Use `JSONB` for flexible PostgreSQL metadata.
 - Store timestamps in UTC and distinguish event time from ingestion/recording time.
 - Enforce valid statuses, nonnegative row counts, and appropriate foreign keys.
@@ -41,3 +43,9 @@ Status: Implementation plan
 - Upgrade and downgrade work on a disposable PostgreSQL database.
 - Tests verify constraints, foreign keys, and all five target queries.
 - Existing migration history remains intact.
+
+`make test-migrations` creates an empty disposable database, upgrades to head,
+downgrades to base, upgrades again, and separately checks existing integer run
+relationships through UUID conversion and reversal. It drops only its generated
+temporary database. `make test-db` verifies the restricted role cannot read
+ground truth, as well as recording success/failure lifecycle behavior.

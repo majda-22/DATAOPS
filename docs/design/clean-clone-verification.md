@@ -1,5 +1,9 @@
 # Clean-clone verification — 2026-10-21
 
+Historical baseline: this records commit `59743aa`, before the recorded-run
+bridge and UUID migration. See `recorded-olist-milestone.md` for the later
+contracts, round-trip migration, and real-data recording verification.
+
 The repository was pushed to `https://github.com/majda-22/DATAOPS.git`, then
 cloned from GitHub into a separate `fresh-validation` directory. A new Python
 3.11 virtual environment was created there; the original environment was not
