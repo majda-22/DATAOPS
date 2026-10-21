@@ -1,4 +1,3 @@
-
 import csv
 
 from dataops.contracts.models import DatasetContract
@@ -153,3 +152,91 @@ def test_blank_order_status_fails_accepted_values(tmp_path):
     assert results["order_status_allowed"]["status"] == "FAIL"
     assert results["order_status_allowed"]["failed_rows"] == 1
 
+
+def make_automatic_contract() -> DatasetContract:
+    return DatasetContract.model_validate(
+        {
+            "dataset": "test_composite",
+            "version": 1,
+            "description": "Test automatic integrity checks",
+            "layer": "bronze",
+            "format": "csv",
+            "columns": [
+                {"name": "order_id", "logical_type": "string", "nullable": False},
+                {"name": "product_id", "logical_type": "string", "nullable": False},
+                {"name": "quantity", "logical_type": "integer", "nullable": True},
+            ],
+            "primary_key": ["order_id", "product_id"],
+            "quality_rules": [],
+        }
+    )
+
+
+def write_composite_csv(tmp_path, rows):
+    path = tmp_path / "composite.csv"
+    with path.open("w", encoding="utf-8", newline="") as file:
+        writer = csv.DictWriter(
+            file,
+            fieldnames=["order_id", "product_id", "quantity"],
+        )
+        writer.writeheader()
+        writer.writerows(rows)
+    return path
+
+
+def test_automatic_not_null_check_for_non_nullable_column(tmp_path):
+    path = write_composite_csv(
+        tmp_path,
+        [{"order_id": "", "product_id": "P1", "quantity": "2"}],
+    )
+
+    report = evaluate_csv(path, make_automatic_contract())
+    results = {result["rule_id"]: result for result in report["results"]}
+
+    assert results["auto_not_null_order_id"]["status"] == "FAIL"
+    assert results["auto_not_null_order_id"]["failed_rows"] == 1
+
+
+def test_automatic_primary_key_detects_duplicate_composite_key(tmp_path):
+    path = write_composite_csv(
+        tmp_path,
+        [
+            {"order_id": "A1", "product_id": "P1", "quantity": "2"},
+            {"order_id": "A1", "product_id": "P1", "quantity": "3"},
+        ],
+    )
+
+    report = evaluate_csv(path, make_automatic_contract())
+    results = {result["rule_id"]: result for result in report["results"]}
+
+    assert results["auto_primary_key_unique"]["status"] == "FAIL"
+    assert results["auto_primary_key_unique"]["failed_rows"] == 1
+
+
+def test_automatic_checks_pass_for_valid_data(tmp_path):
+    path = write_composite_csv(
+        tmp_path,
+        [
+            {"order_id": "A1", "product_id": "P1", "quantity": "2"},
+            {"order_id": "A1", "product_id": "P2", "quantity": "3"},
+        ],
+    )
+
+    report = evaluate_csv(path, make_automatic_contract())
+
+    assert report["status"] == "PASS"
+    assert all(result["status"] == "PASS" for result in report["results"])
+
+
+def test_explicit_primary_key_rules_are_not_duplicated():
+    contract = make_contract()
+
+    from dataops.quality.engine import _build_checks
+
+    checks = _build_checks(contract)
+    check_ids = [check["rule_id"] for check in checks]
+
+    assert check_ids.count("order_id_not_null") == 1
+    assert check_ids.count("order_id_unique") == 1
+    assert "auto_not_null_order_id" not in check_ids
+    assert "auto_primary_key_unique" not in check_ids

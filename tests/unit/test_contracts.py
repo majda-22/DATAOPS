@@ -1,4 +1,3 @@
-
 from pathlib import Path
 
 import pytest
@@ -8,9 +7,7 @@ from dataops.contracts.loader import load_contract
 from dataops.contracts.models import DatasetContract
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-CONTRACT_PATH = (
-    PROJECT_ROOT / "configs" / "datasets" / "olist_orders.yaml"
-)
+CONTRACT_PATH = PROJECT_ROOT / "configs" / "datasets" / "olist_orders.yaml"
 
 
 def test_olist_contract_loads():
@@ -46,9 +43,7 @@ def test_contract_rejects_not_null_rule_without_column():
     raw_contract = contract.model_dump()
 
     not_null_rule = next(
-        rule
-        for rule in raw_contract["quality_rules"]
-        if rule["type"] == "not_null"
+        rule for rule in raw_contract["quality_rules"] if rule["type"] == "not_null"
     )
     not_null_rule["column"] = None
 
@@ -62,4 +57,30 @@ def test_contract_rejects_duplicate_column_names():
     raw_contract["columns"].append(raw_contract["columns"][0].copy())
 
     with pytest.raises(ValidationError):
+        DatasetContract.model_validate(raw_contract)
+
+
+def test_contract_rejects_nullable_primary_key_column():
+    contract = load_contract(CONTRACT_PATH)
+    raw_contract = contract.model_dump()
+
+    raw_contract["columns"][0]["nullable"] = True
+
+    with pytest.raises(
+        ValidationError,
+        match="Primary key columns cannot be nullable",
+    ):
+        DatasetContract.model_validate(raw_contract)
+
+
+def test_contract_rejects_duplicate_primary_key_columns():
+    contract = load_contract(CONTRACT_PATH)
+    raw_contract = contract.model_dump()
+
+    raw_contract["primary_key"] = ["order_id", "order_id"]
+
+    with pytest.raises(
+        ValidationError,
+        match="Primary key columns must be unique",
+    ):
         DatasetContract.model_validate(raw_contract)

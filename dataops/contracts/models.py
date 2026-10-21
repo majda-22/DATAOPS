@@ -1,4 +1,3 @@
-
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -36,24 +35,16 @@ class QualityRule(BaseModel):
     @model_validator(mode="after")
     def validate_rule_fields(self):
         if self.type == "not_null" and not self.column:
-            raise ValueError(
-                "A not_null rule must define 'column'."
-            )
+            raise ValueError("A not_null rule must define 'column'.")
 
         if self.type == "unique" and not self.columns:
-            raise ValueError(
-                "A unique rule must define a non-empty 'columns' list."
-            )
+            raise ValueError("A unique rule must define a non-empty 'columns' list.")
 
         if self.type == "accepted_values":
             if not self.column:
-                raise ValueError(
-                    "An accepted_values rule must define 'column'."
-                )
+                raise ValueError("An accepted_values rule must define 'column'.")
             if not self.values:
-                raise ValueError(
-                    "An accepted_values rule must define non-empty 'values'."
-                )
+                raise ValueError("An accepted_values rule must define non-empty 'values'.")
 
         return self
 
@@ -73,6 +64,7 @@ class DatasetContract(BaseModel):
     @model_validator(mode="after")
     def validate_contract_consistency(self):
         column_names = [column.name for column in self.columns]
+        columns_by_name = {column.name: column for column in self.columns}
 
         if len(column_names) != len(set(column_names)):
             raise ValueError("Column names must be unique.")
@@ -83,11 +75,19 @@ class DatasetContract(BaseModel):
         if not self.primary_key:
             raise ValueError("A contract must define a primary key.")
 
+        if len(self.primary_key) != len(set(self.primary_key)):
+            raise ValueError("Primary key columns must be unique.")
+
         unknown_key_columns = set(self.primary_key) - set(column_names)
         if unknown_key_columns:
             raise ValueError(
-                f"Primary key references unknown columns: "
-                f"{sorted(unknown_key_columns)}"
+                f"Primary key references unknown columns: {sorted(unknown_key_columns)}"
+            )
+
+        nullable_key_columns = [name for name in self.primary_key if columns_by_name[name].nullable]
+        if nullable_key_columns:
+            raise ValueError(
+                f"Primary key columns cannot be nullable: {sorted(nullable_key_columns)}"
             )
 
         rule_ids = [rule.id for rule in self.quality_rules]
@@ -106,8 +106,10 @@ class DatasetContract(BaseModel):
             unknown_columns = set(referenced_columns) - set(column_names)
             if unknown_columns:
                 raise ValueError(
-                    f"Rule '{rule.id}' references unknown columns: "
-                    f"{sorted(unknown_columns)}"
+                    f"Rule '{rule.id}' references unknown columns: {sorted(unknown_columns)}"
                 )
+
+            if rule.type == "unique" and (len(rule.columns or []) != len(set(rule.columns or []))):
+                raise ValueError(f"Rule '{rule.id}' contains duplicate unique columns.")
 
         return self

@@ -1,4 +1,3 @@
-
 import json
 from pathlib import Path
 
@@ -7,21 +6,11 @@ from dataops.quality.engine import evaluate_csv
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
-CONTRACT_PATH = (
-    PROJECT_ROOT / "configs" / "datasets" / "olist_orders.yaml"
-)
+CONTRACT_PATH = PROJECT_ROOT / "configs" / "datasets" / "olist_orders.yaml"
 
-DATA_PATH = (
-    PROJECT_ROOT
-    / "data"
-    / "raw"
-    / "olist"
-    / "olist_orders_dataset.csv"
-)
+DATA_PATH = PROJECT_ROOT / "data" / "raw" / "olist" / "olist_orders_dataset.csv"
 
-REPORT_PATH = (
-    PROJECT_ROOT / "data" / "reports" / "olist_orders_quality.json"
-)
+REPORT_PATH = PROJECT_ROOT / "data" / "reports" / "olist_orders_quality.json"
 
 
 def main() -> None:
