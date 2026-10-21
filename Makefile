@@ -1,6 +1,6 @@
 PYTHON ?= python
 
-.PHONY: install lint test migrate test-db
+.PHONY: install lint test migrate test-db test-migrations record-olist
 
 install:
 	$(PYTHON) -m pip install -e ".[db,dev,spark]"
@@ -17,3 +17,9 @@ migrate:
 
 test-db:
 	$(PYTHON) scripts/dev.py test-db
+
+test-migrations:
+	$(PYTHON) scripts/dev.py test-migrations
+
+record-olist:
+	$(PYTHON) scripts/dev.py record-olist

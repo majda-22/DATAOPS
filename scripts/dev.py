@@ -55,6 +55,10 @@ def test_database() -> None:
                 .as_string()
             )
             connection.exec_driver_sql("GRANT USAGE ON SCHEMA eval TO dataops_restricted")
+            connection.exec_driver_sql("GRANT USAGE ON SCHEMA meta TO dataops_restricted")
+            connection.exec_driver_sql(
+                "GRANT SELECT ON ALL TABLES IN SCHEMA meta TO dataops_restricted"
+            )
             connection.exec_driver_sql(
                 "REVOKE ALL ON eval.incident_ground_truth FROM dataops_restricted"
             )
@@ -63,12 +67,19 @@ def test_database() -> None:
     os.environ["EVAL_RESTRICTED_DATABASE_URL"] = url.set(
         username="dataops_restricted", password=restricted_password
     ).render_as_string(hide_password=False)
-    module("pytest", "-v", "tests/integration/test_metadata_queries.py")
+    module(
+        "pytest",
+        "-v",
+        "tests/integration/test_metadata_queries.py",
+        "tests/integration/test_recorded_run.py",
+    )
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("command", choices=["lint", "test", "migrate", "test-db"])
+    parser.add_argument(
+        "command", choices=["lint", "test", "migrate", "test-db", "test-migrations", "record-olist"]
+    )
     args = parser.parse_args()
     if args.command == "lint":
         module("ruff", "check", ".")
@@ -80,8 +91,16 @@ def main() -> None:
         if not os.getenv("DATABASE_URL"):
             parser.error("Set DATABASE_URL to the database you intend to migrate.")
         module("alembic", "upgrade", "head")
+    elif args.command == "test-db":
+        test_database()
+    elif args.command == "test-migrations":
+        test_database()
+        os.environ["MIGRATION_ADMIN_DATABASE_URL"] = os.environ["DATABASE_URL"]
+        module("pytest", "-v", "tests/integration/test_migration_roundtrip.py")
     else:
         test_database()
+        os.environ["EVALUATION_DATABASE_URL"] = os.environ["DATABASE_URL"]
+        run(sys.executable, "scripts/record_olist_run.py")
 
 
 if __name__ == "__main__":
