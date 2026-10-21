@@ -1,5 +1,6 @@
 from datetime import datetime
 from typing import Any
+from uuid import UUID, uuid4
 
 from sqlalchemy import (
     Boolean,
@@ -15,6 +16,7 @@ from sqlalchemy import (
     text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from dataops.db.base import Base
@@ -92,7 +94,19 @@ class PipelineRun(Base):
         {"schema": "meta"},
     )
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        primary_key=True,
+        default=uuid4,
+        server_default=text("gen_random_uuid()"),
+    )
+    # Internal compatibility key retained for lossless migration downgrade.
+    legacy_id: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        unique=True,
+        server_default=text("nextval('meta.pipeline_runs_id_seq'::regclass)"),
+    )
     dataset_contract_id: Mapped[int | None] = mapped_column(
         ForeignKey("meta.dataset_contracts.id"), nullable=True
     )
@@ -123,8 +137,20 @@ class TaskRun(Base):
         {"schema": "meta"},
     )
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    pipeline_run_id: Mapped[int] = mapped_column(
+    id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        primary_key=True,
+        default=uuid4,
+        server_default=text("gen_random_uuid()"),
+    )
+    # Internal compatibility key retained for lossless migration downgrade.
+    legacy_id: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        unique=True,
+        server_default=text("nextval('meta.task_runs_id_seq'::regclass)"),
+    )
+    pipeline_run_id: Mapped[UUID] = mapped_column(
         ForeignKey("meta.pipeline_runs.id", ondelete="CASCADE"), nullable=False
     )
     task_name: Mapped[str] = mapped_column(String(150), nullable=False)
@@ -149,7 +175,7 @@ class QualityResult(Base):
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    pipeline_run_id: Mapped[int] = mapped_column(
+    pipeline_run_id: Mapped[UUID] = mapped_column(
         ForeignKey("meta.pipeline_runs.id", ondelete="CASCADE"), nullable=False
     )
     rule_id: Mapped[str] = mapped_column(String(150), nullable=False)
@@ -171,7 +197,7 @@ class TableProfile(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     dataset_name: Mapped[str] = mapped_column(String(150), nullable=False)
-    pipeline_run_id: Mapped[int | None] = mapped_column(
+    pipeline_run_id: Mapped[UUID | None] = mapped_column(
         ForeignKey("meta.pipeline_runs.id", ondelete="SET NULL")
     )
     row_count: Mapped[int] = mapped_column(Integer, nullable=False)
@@ -193,7 +219,7 @@ class LineageEdge(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     source_dataset: Mapped[str] = mapped_column(String(150), nullable=False)
     target_dataset: Mapped[str] = mapped_column(String(150), nullable=False)
-    pipeline_run_id: Mapped[int | None] = mapped_column(
+    pipeline_run_id: Mapped[UUID | None] = mapped_column(
         ForeignKey("meta.pipeline_runs.id", ondelete="SET NULL")
     )
     created_at: Mapped[datetime] = mapped_column(
@@ -220,7 +246,7 @@ class Incident(Base):
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    pipeline_run_id: Mapped[int | None] = mapped_column(
+    pipeline_run_id: Mapped[UUID | None] = mapped_column(
         ForeignKey("meta.pipeline_runs.id", ondelete="SET NULL")
     )
     title: Mapped[str] = mapped_column(String(250), nullable=False)

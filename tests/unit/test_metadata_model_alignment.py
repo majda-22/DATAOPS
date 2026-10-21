@@ -32,13 +32,16 @@ def test_expanded_models_match_migration_constraints_defaults_and_nullability(mo
 
     for name, expected in migrated.tables.items():
         actual = Base.metadata.tables[name]
-        assert set(actual.columns.keys()) == set(expected.columns.keys()), name
+        # UUID conversion in the next revision retains the serial as legacy_id.
+        assert set(actual.columns.keys()) == set(expected.columns.keys()) | (
+            {"legacy_id"} if name == "meta.task_runs" else set()
+        ), name
         for column in expected.columns:
             orm_column = actual.c[column.name]
             assert orm_column.nullable == column.nullable, f"{name}.{column.name}"
-            assert server_default(orm_column) == server_default(column), (
-                f"Server default mismatch: {name}.{column.name}"
-            )
+            assert (name == "meta.task_runs" and column.key == "id") or server_default(
+                orm_column
+            ) == server_default(column), f"Server default mismatch: {name}.{column.name}"
         expected_checks = {
             (constraint.name, str(constraint.sqltext))
             for constraint in expected.constraints

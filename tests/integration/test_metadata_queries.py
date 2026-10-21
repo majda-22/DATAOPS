@@ -22,6 +22,14 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Connection, Engine, make_url
 from sqlalchemy.exc import DBAPIError
 
+from dataops.db.queries import (
+    Q1_DATASET_HISTORY,
+    Q2_PIPELINE_TASKS,
+    Q3_QUALITY_FAILURES,
+    Q4_INCIDENT_INVESTIGATION,
+    Q5_EVALUATION_CASES,
+)
+
 
 def _normalize_postgres_url(url: str) -> str:
     """Use psycopg 3 explicitly for common PostgreSQL URL formats."""
@@ -113,108 +121,6 @@ def case_key() -> str:
 @pytest.fixture
 def base_time() -> datetime:
     return datetime(2026, 1, 15, 12, 0, tzinfo=UTC)
-
-
-# Q1 — Dataset version history, including the schema snapshot captured for it.
-Q1_DATASET_HISTORY = text(
-    """
-    SELECT
-        dv.dataset_name,
-        dv.version,
-        dv.event_time,
-        dv.row_count,
-        ss.fingerprint,
-        ss.schema_definition
-    FROM meta.dataset_versions AS dv
-    LEFT JOIN LATERAL (
-        SELECT s.fingerprint, s.schema_definition
-        FROM meta.schema_snapshots AS s
-        WHERE s.dataset_name = dv.dataset_name
-          AND s.captured_at <= dv.recorded_at
-        ORDER BY s.captured_at DESC, s.id DESC
-        LIMIT 1
-    ) AS ss ON TRUE
-    WHERE dv.dataset_name = :dataset_name
-    ORDER BY dv.event_time, dv.version
-    """
-)
-
-# Q2 — Pipeline execution and its individual tasks.
-Q2_PIPELINE_TASKS = text(
-    """
-    SELECT
-        p.pipeline_name,
-        p.status AS pipeline_status,
-        p.rows_in AS pipeline_rows_in,
-        p.rows_out AS pipeline_rows_out,
-        t.task_name,
-        t.status AS task_status,
-        t.rows_in AS task_rows_in,
-        t.rows_out AS task_rows_out
-    FROM meta.pipeline_runs AS p
-    JOIN meta.task_runs AS t ON t.pipeline_run_id = p.id
-    WHERE p.pipeline_name = :pipeline_name
-    ORDER BY t.task_name
-    """
-)
-
-# Q3 — Failed quality checks for a pipeline execution.
-Q3_QUALITY_FAILURES = text(
-    """
-    SELECT
-        p.pipeline_name,
-        p.status AS pipeline_status,
-        q.rule_id,
-        q.status AS quality_status,
-        q.failed_rows,
-        q.details
-    FROM meta.pipeline_runs AS p
-    JOIN meta.quality_results AS q ON q.pipeline_run_id = p.id
-    WHERE p.id = :pipeline_run_id
-      AND q.status IN ('failed', 'error')
-    ORDER BY q.rule_id
-    """
-)
-
-# Q4 — Incident investigation: incident evidence plus upstream/downstream lineage
-# associated with the same pipeline run.
-Q4_INCIDENT_INVESTIGATION = text(
-    """
-    SELECT
-        i.id AS incident_id,
-        i.title,
-        i.severity,
-        i.status AS incident_status,
-        i.diagnosis,
-        e.evidence_type,
-        e.evidence_payload,
-        le.source_dataset,
-        le.target_dataset,
-        le.details AS lineage_details
-    FROM meta.incidents AS i
-    LEFT JOIN meta.incident_evidence AS e ON e.incident_id = i.id
-    LEFT JOIN meta.lineage_edges AS le ON le.pipeline_run_id = i.pipeline_run_id
-    WHERE i.id = :incident_id
-    ORDER BY e.id, le.id
-    """
-)
-
-# Q5 — Evaluation labels are queried only from eval, with an explicit split filter.
-Q5_EVALUATION_CASES = text(
-    """
-    SELECT
-        case_key,
-        expected_incident,
-        expected_category,
-        expected_diagnosis,
-        split,
-        labels
-    FROM eval.incident_ground_truth
-    WHERE split = :split
-      AND case_key LIKE :case_prefix
-    ORDER BY case_key
-    """
-)
 
 
 def test_q1_dataset_history_returns_versions_and_matching_schema(
@@ -491,6 +397,9 @@ def test_evaluation_role_cannot_read_ground_truth() -> None:
         pytest.fail(str(error), pytrace=False)
     try:
         with engine.connect() as connection:
+            # A detector role must be usable for operational metadata, not simply
+            # denied every table in the database.
+            connection.execute(text("SELECT id FROM meta.pipeline_runs LIMIT 1")).all()
             with pytest.raises(DBAPIError) as exc_info:
                 connection.execute(text("SELECT case_key FROM eval.incident_ground_truth LIMIT 1"))
             original = exc_info.value.orig
