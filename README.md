@@ -152,3 +152,6 @@ The restricted-role test checks SQLSTATE 42501 when querying evaluation labels.
 See [metadata design](docs/design/metadata-schema.md) and
 [target queries](docs/design/target-queries.md). The next major feature is wiring
 Olist runs and reports into these metadata tables.
+
+See the [clean-clone verification record](docs/design/clean-clone-verification.md)
+for tested commands, results, and platform limitations.
