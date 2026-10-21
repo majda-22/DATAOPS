@@ -14,6 +14,4 @@ def test_project_structure_exists():
     ]
 
     for relative_path in expected_paths:
-        assert (root / relative_path).exists(), (
-            f"Missing project component: {relative_path}"
-        )
+        assert (root / relative_path).exists(), f"Missing project component: {relative_path}"

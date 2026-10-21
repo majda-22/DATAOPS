@@ -1,7 +1,0 @@
-pyproject.toml
-dataops/__init__.py
-dataops_detective.egg-info/PKG-INFO
-dataops_detective.egg-info/SOURCES.txt
-dataops_detective.egg-info/dependency_links.txt
-dataops_detective.egg-info/requires.txt
-dataops_detective.egg-info/top_level.txt

@@ -10,3 +10,10 @@ htmlcov/
 data/
 *.log
 .DS_Store
+.spark-ivy/
+.tools/
+*.egg-info/
+.ruff_cache/
+.mypy_cache/
+spark-warehouse/
+artifacts/
