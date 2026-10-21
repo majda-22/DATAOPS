@@ -1,8 +1,8 @@
-
 import csv
 from collections import Counter
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 
 def profile_csv(
@@ -24,11 +24,11 @@ def profile_csv(
     started_at = datetime.now(UTC)
 
     row_count = 0
-    missing_counts = Counter()
-    distinct_values = {}
-    status_counts = Counter()
-    timestamp_blank_counts = Counter()
-    timestamp_invalid_counts = Counter()
+    missing_counts: Counter[str] = Counter()
+    distinct_values: dict[str, set[str]] = {}
+    status_counts: Counter[str] = Counter()
+    timestamp_blank_counts: Counter[str] = Counter()
+    timestamp_invalid_counts: Counter[str] = Counter()
 
     seen_unique_values = set()
     repeated_unique_values = set()
@@ -50,9 +50,7 @@ def profile_csv(
         columns = reader.fieldnames
 
         if len(columns) != len(set(columns)):
-            raise ValueError(
-                f"CSV contains duplicate column names: {csv_path}"
-            )
+            raise ValueError(f"CSV contains duplicate column names: {csv_path}")
 
         configured_columns = set(timestamp_columns)
 
@@ -68,10 +66,7 @@ def profile_csv(
         missing_columns = configured_columns - set(columns)
 
         if missing_columns:
-            raise ValueError(
-                f"CSV is missing configured columns: "
-                f"{sorted(missing_columns)}"
-            )
+            raise ValueError(f"CSV is missing configured columns: {sorted(missing_columns)}")
 
         distinct_values = {column: set() for column in columns}
 
@@ -135,15 +130,13 @@ def profile_csv(
             "distinct_count": len(distinct_values[column]),
         }
 
-    report = {
+    report: dict[str, Any] = {
         "dataset": dataset or csv_path.stem,
         "profiled_at": started_at.isoformat(),
         "source_file": csv_path.name,
         "row_count": row_count,
         "columns": columns,
-        "missing_values": {
-            column: missing_counts[column] for column in columns
-        },
+        "missing_values": {column: missing_counts[column] for column in columns},
         "column_metrics": column_metrics,
     }
 
@@ -156,9 +149,7 @@ def profile_csv(
         }
 
     if status_column:
-        report["value_counts"] = {
-            status_column: dict(sorted(status_counts.items()))
-        }
+        report["value_counts"] = {status_column: dict(sorted(status_counts.items()))}
 
     if timestamp_columns:
         report["timestamp_checks"] = {
@@ -172,10 +163,8 @@ def profile_csv(
     if timestamp_range_column:
         report["timestamp_ranges"] = {
             timestamp_range_column: {
-                "min": timestamp_min.isoformat(sep=" ")
-                if timestamp_min else None,
-                "max": timestamp_max.isoformat(sep=" ")
-                if timestamp_max else None,
+                "min": timestamp_min.isoformat(sep=" ") if timestamp_min else None,
+                "max": timestamp_max.isoformat(sep=" ") if timestamp_max else None,
             }
         }
 

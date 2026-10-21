@@ -1,4 +1,3 @@
-
 import csv
 
 import pytest
@@ -134,6 +133,4 @@ def test_profile_supports_configured_dataset_metrics(tmp_path):
         "blank_count": 1,
         "invalid_nonblank_count": 1,
     }
-    assert profile["timestamp_ranges"]["order_purchase_timestamp"]["min"] == (
-        "2024-01-01 10:00:00"
-    )
+    assert profile["timestamp_ranges"]["order_purchase_timestamp"]["min"] == ("2024-01-01 10:00:00")
