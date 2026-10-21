@@ -1,19 +1,175 @@
 name: dataops-detective
+
+x-airflow-common: &airflow-common
+  image: dataops/airflow:3.3.2-local
+  pull_policy: never
+  build:
+    context: .
+    dockerfile: infra/airflow/Dockerfile
+  user: "50000:0"
+  environment: &airflow-environment
+    AIRFLOW__CORE__EXECUTOR: LocalExecutor
+    AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+    AIRFLOW__CORE__PARALLELISM: "2"
+    AIRFLOW__CORE__FERNET_KEY: ${AIRFLOW_FERNET_KEY:?Set in .env}
+    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg://airflow:${AIRFLOW_DB_PASSWORD:?Set in .env}@postgres:5432/airflow
+    AIRFLOW__CORE__EXECUTION_API_SERVER_URL: http://airflow-api-server:8080/execution/
+    AIRFLOW__API_AUTH__JWT_SECRET: ${AIRFLOW_JWT_SECRET:?Set in .env}
+    AIRFLOW__CORE__AUTH_MANAGER: airflow.api_fastapi.auth.managers.simple.simple_auth_manager.SimpleAuthManager
+    AIRFLOW__CORE__SIMPLE_AUTH_MANAGER_USERS: admin:admin
+    AIRFLOW__CORE__SIMPLE_AUTH_MANAGER_PASSWORDS_FILE: /opt/airflow/auth/passwords.json
+    AIRFLOW__SCHEDULER__ENABLE_HEALTH_CHECK: "true"
+    AIRFLOW__DAG_PROCESSOR__PARSING_PROCESSES: "1"
+    PYTHONPATH: /opt/dataops
+  volumes:
+    - ./dags:/opt/airflow/dags:ro
+    - ./dataops:/opt/dataops/dataops:ro
+    - airflow-logs:/opt/airflow/logs
+    - airflow-auth:/opt/airflow/auth
+
 services:
-  postgres-test:
+  postgres:
     image: postgres:17.6
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-dataops}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-dataops_local_test}
-      POSTGRES_DB: ${POSTGRES_DB:-dataops_metadata_test}
+      POSTGRES_USER: platform_admin
+      POSTGRES_PASSWORD: ${SHARED_POSTGRES_ADMIN_PASSWORD:?Set in .env}
+      POSTGRES_DB: postgres
+      METADATA_DB_PASSWORD: ${METADATA_DB_PASSWORD:?Set in .env}
+      METADATA_TEST_DB_PASSWORD: ${METADATA_TEST_DB_PASSWORD:?Set in .env}
+      AIRFLOW_DB_PASSWORD: ${AIRFLOW_DB_PASSWORD:?Set in .env}
+      MARQUEZ_DB_PASSWORD: ${MARQUEZ_DB_PASSWORD:?Set in .env}
     ports:
-      - "127.0.0.1:${TEST_POSTGRES_PORT:-55433}:5432"
+      - "127.0.0.1:${SHARED_POSTGRES_PORT:-55432}:5432"
+    volumes:
+      - postgres-shared:/var/lib/postgresql/data
+      - ./infra/postgres/init.sql:/docker-entrypoint-initdb.d/10-databases.sql:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U $$POSTGRES_USER -d $$POSTGRES_DB"]
       interval: 2s
       timeout: 5s
       retries: 30
+      start_period: 10s
+  minio:
+    image: dataops/minio:local-pinned
+    pull_policy: never
+    command: ["server", "/data", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?Set in .env}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?Set in .env}
+    ports:
+      - "127.0.0.1:${MINIO_API_PORT:-9000}:9000"
+      - "127.0.0.1:${MINIO_CONSOLE_PORT:-9001}:9001"
     volumes:
-      - postgres-test:/var/lib/postgresql/data
+      - minio-data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "--max-time", "3", "http://localhost:9000/minio/health/ready"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+
+  minio-init:
+    image: dataops/mc:local-pinned
+    pull_policy: never
+    depends_on:
+      minio:
+        condition: service_healthy
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?Set in .env}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?Set in .env}
+    entrypoint: ["/bin/sh", "-ec"]
+    command:
+      - |
+        mc alias set storage http://minio:9000 "$$MINIO_ROOT_USER" "$$MINIO_ROOT_PASSWORD"
+        mc mb --ignore-existing storage/bronze
+        mc mb --ignore-existing storage/silver
+        mc mb --ignore-existing storage/gold
+        mc mb --ignore-existing storage/quarantine
+        mc ls storage
+    restart: "no"
+
+  airflow-init:
+    <<: *airflow-common
+    user: "0:0"
+    entrypoint: ["python", "/opt/airflow/init.py"]
+    environment:
+      <<: *airflow-environment
+      AIRFLOW_ADMIN_PASSWORD: ${AIRFLOW_ADMIN_PASSWORD:?Set in .env}
+    volumes:
+      - ./infra/airflow/init.py:/opt/airflow/init.py:ro
+      - airflow-logs:/opt/airflow/logs
+      - airflow-auth:/opt/airflow/auth
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  airflow-api-server:
+    <<: *airflow-common
+    command: ["api-server", "--workers", "1"]
+    ports:
+      - "127.0.0.1:${AIRFLOW_UI_PORT:-18080}:8080"
+    depends_on:
+      airflow-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8080/api/v2/monitor/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+
+  airflow-scheduler:
+    <<: *airflow-common
+    command: scheduler
+    depends_on:
+      airflow-init:
+        condition: service_completed_successfully
+      airflow-api-server:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8974/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+
+  airflow-dag-processor:
+    <<: *airflow-common
+    command: dag-processor
+    depends_on:
+      airflow-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD-SHELL", "airflow jobs check --job-type DagProcessorJob --hostname \"$${HOSTNAME}\""]
+      interval: 30s
+      timeout: 20s
+      retries: 10
+      start_period: 30s
+
+  marquez:
+    image: marquezproject/marquez:0.51.1
+    environment:
+      MARQUEZ_CONFIG: /usr/src/app/config/marquez.yml
+      MARQUEZ_DB_PASSWORD: ${MARQUEZ_DB_PASSWORD:?Set in .env}
+      JAVA_OPTS: "-Xms128m -Xmx512m"
+    ports:
+      - "127.0.0.1:${MARQUEZ_API_PORT:-15000}:5000"
+      - "127.0.0.1:${MARQUEZ_ADMIN_PORT:-15001}:5001"
+    volumes:
+      - ./infra/marquez/marquez.yml:/usr/src/app/config/marquez.yml:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "--max-time", "5", "http://localhost:5001/healthcheck"]
+      interval: 10s
+      timeout: 6s
+      retries: 30
+      start_period: 60s
+
 volumes:
-  postgres-test:
+  postgres-shared:
+  minio-data:
+  airflow-logs:
+  airflow-auth:

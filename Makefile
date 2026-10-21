@@ -3,7 +3,7 @@ PYTHON ?= python
 .PHONY: install lint test migrate test-db test-migrations record-olist
 
 install:
-	$(PYTHON) -m pip install -e ".[db,dev,spark]"
+	$(PYTHON) -m pip install -e ".[db,storage,dev,spark]"
 	$(PYTHON) -m pre_commit install
 
 lint:

@@ -17,3 +17,4 @@ data/
 .mypy_cache/
 spark-warehouse/
 artifacts/
+backups/
