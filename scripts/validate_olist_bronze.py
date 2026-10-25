@@ -6,12 +6,13 @@ import yaml
 from delta import configure_spark_with_delta_pip
 from dotenv import load_dotenv
 from pyspark.sql import SparkSession
-from pyspark.sql import functions as F
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
 from dataops.contracts.models import DatasetContract
 from dataops.observability.quality_store import persist_quality_report
+from dataops.pipelines.olist_silver import transform_olist_orders
+from dataops.pipelines.quality_gate import publish_if_quality_passed
 from dataops.quality.spark_engine import evaluate_spark
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -122,78 +123,42 @@ def main():
             engine.dispose()
 
         # Stop Silver publication if Bronze quality validation failed.
-        if report["status"] != "PASS":
-            raise RuntimeError("Bronze quality validation failed. Silver publication was blocked.")
 
-        print("\nQuality gate PASSED. Preparing Silver data.")
+        def publish_silver() -> None:
+            """Transform and publish validated Olist orders to Silver."""
 
-        # Normalize timestamps and convert them to proper Spark types.
-        spark.conf.set("spark.sql.session.timeZone", "UTC")
+            print("\nQuality gate PASSED. Preparing Silver data.")
 
-        silver_df = df
+            spark.conf.set("spark.sql.session.timeZone", "UTC")
 
-        for column in TIMESTAMP_COLUMNS:
-            raw_value = F.trim(F.col(column))
+            # Transform Bronze string timestamps into Silver timestamps.
+            silver_df = transform_olist_orders(df)
 
-            normalized = F.when(
-                raw_value.isNull() | (raw_value == ""),
-                F.lit(None),
-            ).otherwise(raw_value)
+            source_count = report["row_count"]
+            silver_count = silver_df.count()
 
-            silver_df = silver_df.withColumn(
-                column,
-                F.try_to_timestamp(
-                    normalized,
-                    F.lit("yyyy-MM-dd HH:mm:ss"),
-                ),
-            )
+            if silver_count != source_count:
+                raise ValueError("Row count changed during Silver transformation")
 
-            # Compare original nonblank values against parsed values.
-            invalid_count = (
-                df.select(F.col(column).alias("raw_timestamp"))
-                .withColumn(
-                    "parsed_timestamp",
-                    F.try_to_timestamp(
-                        F.when(
-                            F.trim(F.col("raw_timestamp")) == "",
-                            F.lit(None),
-                        ).otherwise(F.col("raw_timestamp")),
-                        F.lit("yyyy-MM-dd HH:mm:ss"),
-                    ),
-                )
-                .filter(
-                    F.col("raw_timestamp").isNotNull()
-                    & (F.trim(F.col("raw_timestamp")) != "")
-                    & F.col("parsed_timestamp").isNull()
-                )
-                .count()
-            )
+            # Write the Silver Delta table into MinIO.
+            (silver_df.write.format("delta").mode("overwrite").save(SILVER_TARGET))
 
-            if invalid_count:
-                raise ValueError(f"Invalid timestamps in {column}: {invalid_count}")
+            # Read the data back from MinIO to verify publication.
+            published = spark.read.format("delta").load(SILVER_TARGET)
 
-        source_count = report["row_count"]
-        silver_count = silver_df.count()
+            published_count = published.count()
 
-        if silver_count != source_count:
-            raise ValueError("Row count changed during Silver transformation")
+            if published_count != source_count:
+                raise ValueError("Silver output row count does not match Bronze")
 
-        # Publish Silver only after validation succeeds.
-        (silver_df.write.format("delta").mode("overwrite").save(SILVER_TARGET))
+            published.printSchema()
 
-        # Read back to verify persisted output.
-        published_count = spark.read.format("delta").load(SILVER_TARGET).count()
+            print(f"Silver rows: {published_count}")
+            print(f"Silver location: {SILVER_TARGET}")
+            print("BRONZE TO SILVER PIPELINE PASSED")
 
-        published = spark.read.format("delta").load(SILVER_TARGET)
-
-        published.printSchema()
-        if published_count != source_count:
-            raise ValueError("Silver output row count does not match Bronze")
-
-        print(f"Silver rows: {published_count}")
-        print(f"Silver location: {SILVER_TARGET}")
-        print("BRONZE TO SILVER PIPELINE PASSED")
-
+        # The gate decides whether publish_silver is executed.
+        publish_if_quality_passed(report, publish_silver)
         print(f"\nReport saved to: {report_path}")
         print(f"Overall status: {report['status']}")
 
