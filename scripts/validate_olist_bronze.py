@@ -6,6 +6,7 @@ import yaml
 from delta import configure_spark_with_delta_pip
 from dotenv import load_dotenv
 from pyspark.sql import SparkSession
+from pyspark.sql import functions as F
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
@@ -16,6 +17,14 @@ from dataops.quality.spark_engine import evaluate_spark
 ROOT = Path(__file__).resolve().parents[1]
 CONTRACT_PATH = ROOT / "configs/datasets/olist_orders.yaml"
 SOURCE = "s3a://bronze/olist/orders"
+SILVER_TARGET = "s3a://silver/olist/orders"
+TIMESTAMP_COLUMNS = [
+    "order_purchase_timestamp",
+    "order_approved_at",
+    "order_delivered_carrier_date",
+    "order_delivered_customer_date",
+    "order_estimated_delivery_date",
+]
 
 load_dotenv(ROOT / ".env")
 
@@ -111,6 +120,79 @@ def main():
 
         finally:
             engine.dispose()
+
+        # Stop Silver publication if Bronze quality validation failed.
+        if report["status"] != "PASS":
+            raise RuntimeError("Bronze quality validation failed. Silver publication was blocked.")
+
+        print("\nQuality gate PASSED. Preparing Silver data.")
+
+        # Normalize timestamps and convert them to proper Spark types.
+        spark.conf.set("spark.sql.session.timeZone", "UTC")
+
+        silver_df = df
+
+        for column in TIMESTAMP_COLUMNS:
+            raw_value = F.trim(F.col(column))
+
+            normalized = F.when(
+                raw_value.isNull() | (raw_value == ""),
+                F.lit(None),
+            ).otherwise(raw_value)
+
+            silver_df = silver_df.withColumn(
+                column,
+                F.try_to_timestamp(
+                    normalized,
+                    F.lit("yyyy-MM-dd HH:mm:ss"),
+                ),
+            )
+
+            # Compare original nonblank values against parsed values.
+            invalid_count = (
+                df.select(F.col(column).alias("raw_timestamp"))
+                .withColumn(
+                    "parsed_timestamp",
+                    F.try_to_timestamp(
+                        F.when(
+                            F.trim(F.col("raw_timestamp")) == "",
+                            F.lit(None),
+                        ).otherwise(F.col("raw_timestamp")),
+                        F.lit("yyyy-MM-dd HH:mm:ss"),
+                    ),
+                )
+                .filter(
+                    F.col("raw_timestamp").isNotNull()
+                    & (F.trim(F.col("raw_timestamp")) != "")
+                    & F.col("parsed_timestamp").isNull()
+                )
+                .count()
+            )
+
+            if invalid_count:
+                raise ValueError(f"Invalid timestamps in {column}: {invalid_count}")
+
+        source_count = report["row_count"]
+        silver_count = silver_df.count()
+
+        if silver_count != source_count:
+            raise ValueError("Row count changed during Silver transformation")
+
+        # Publish Silver only after validation succeeds.
+        (silver_df.write.format("delta").mode("overwrite").save(SILVER_TARGET))
+
+        # Read back to verify persisted output.
+        published_count = spark.read.format("delta").load(SILVER_TARGET).count()
+
+        published = spark.read.format("delta").load(SILVER_TARGET)
+
+        published.printSchema()
+        if published_count != source_count:
+            raise ValueError("Silver output row count does not match Bronze")
+
+        print(f"Silver rows: {published_count}")
+        print(f"Silver location: {SILVER_TARGET}")
+        print("BRONZE TO SILVER PIPELINE PASSED")
 
         print(f"\nReport saved to: {report_path}")
         print(f"Overall status: {report['status']}")
