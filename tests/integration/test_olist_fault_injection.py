@@ -6,6 +6,7 @@ from pyspark.sql import SparkSession
 from pyspark.sql.types import StringType, StructField, StructType
 
 from dataops.contracts.models import DatasetContract
+from dataops.evaluation.detector import evaluate_detection
 from dataops.faults.injector import inject_fault
 from dataops.faults.models import FaultSpec
 from dataops.pipelines.quality_gate import (
@@ -146,13 +147,12 @@ def test_fault_detection_blocks_publication(
         reference_data={"olist_customers": customers_df},
     )
 
-    # 5. Verify Spark detected a quality failure.
-    assert report["status"] == "FAIL"
-
-    failed_rules = {result["rule_id"] for result in report["results"] if result["status"] == "FAIL"}
-
-    # Compare detector output with held-out ground truth.
-    assert ground_truth.expected_rule in failed_rules
+    evaluation = evaluate_detection(report, ground_truth)
+    assert evaluation.fault_present is True
+    assert evaluation.detected is True
+    assert evaluation.expected_rule_hit is True
+    assert evaluation.expected_rule == spec.expected_rule
+    assert evaluation.false_positive is False
 
     # 6. Verify the quality gate prevents publication.
     published = []
@@ -164,3 +164,39 @@ def test_fault_detection_blocks_publication(
         publish_if_quality_passed(report, publish)
 
     assert published == []
+
+
+def test_clean_orders_do_not_trigger_detection(spark, contract):
+    """Verify clean records do not produce false-positive alerts."""
+
+    # No injected faults.
+    orders_df = spark.createDataFrame(
+        valid_orders(),
+        schema=SCHEMA,
+    )
+
+    customers_df = spark.createDataFrame(
+        [
+            ("customer_001",),
+            ("customer_002",),
+        ],
+        ["customer_id"],
+    )
+
+    # Run the actual Spark detector.
+    report = evaluate_spark(
+        orders_df,
+        contract,
+        source="synthetic_clean_control",
+        reference_data={"olist_customers": customers_df},
+    )
+
+    # None means no injected fault (clean ground truth).
+    evaluation = evaluate_detection(report, None)
+
+    assert report["status"] == "PASS"
+    assert evaluation.fault_present is False
+    assert evaluation.detected is False
+    assert evaluation.false_positive is False
+    assert evaluation.expected_rule_hit is None
+    assert evaluation.detected_rules == ()
