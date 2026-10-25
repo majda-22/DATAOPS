@@ -1,4 +1,3 @@
-from copy import deepcopy
 from pathlib import Path
 
 import pytest
@@ -7,6 +6,8 @@ from pyspark.sql import SparkSession
 from pyspark.sql.types import StringType, StructField, StructType
 
 from dataops.contracts.models import DatasetContract
+from dataops.faults.injector import inject_fault
+from dataops.faults.models import FaultSpec
 from dataops.pipelines.quality_gate import (
     QualityGateError,
     publish_if_quality_passed,
@@ -73,38 +74,61 @@ def valid_orders():
 
 
 @pytest.mark.parametrize(
-    ("fault", "expected_rule"),
+    "spec",
     [
-        ("duplicate_order_id", "order_id_unique"),
-        ("invalid_status", "order_status_allowed"),
-        ("null_order_id", "order_id_not_null"),
-        ("orphan_customer", "orders_customer_fk"),
+        FaultSpec(
+            fault_type="duplicate_key",
+            column="order_id",
+            row_indices=(1,),
+            source_row_index=0,
+            expected_rule="order_id_unique",
+        ),
+        FaultSpec(
+            fault_type="invalid_value",
+            column="order_status",
+            row_indices=(1,),
+            value="INVALID_STATUS",
+            expected_rule="order_status_allowed",
+        ),
+        FaultSpec(
+            fault_type="null_value",
+            column="order_id",
+            row_indices=(1,),
+            expected_rule="order_id_not_null",
+        ),
+        FaultSpec(
+            fault_type="foreign_key_violation",
+            column="customer_id",
+            row_indices=(1,),
+            value="UNKNOWN_CUSTOMER",
+            expected_rule="orders_customer_fk",
+        ),
+    ],
+    ids=[
+        "duplicate_order_id",
+        "invalid_status",
+        "null_order_id",
+        "orphan_customer",
     ],
 )
 def test_fault_detection_blocks_publication(
     spark,
     contract,
-    fault,
-    expected_rule,
+    spec,
 ):
-    orders = deepcopy(valid_orders())
+    # 1. Inject the fault and obtain separate ground truth.
+    corrupted_orders, ground_truth = inject_fault(
+        valid_orders(),
+        spec,
+    )
 
-    # Inject exactly one fault.
-    if fault == "duplicate_order_id":
-        orders[1]["order_id"] = orders[0]["order_id"]
+    # 2. Convert corrupted records to a Spark DataFrame.
+    orders_df = spark.createDataFrame(
+        corrupted_orders,
+        schema=SCHEMA,
+    )
 
-    elif fault == "invalid_status":
-        orders[1]["order_status"] = "INVALID_STATUS"
-
-    elif fault == "null_order_id":
-        orders[1]["order_id"] = None
-
-    elif fault == "orphan_customer":
-        orders[1]["customer_id"] = "UNKNOWN_CUSTOMER"
-
-    orders_df = spark.createDataFrame(orders, schema=SCHEMA)
-
-    # Valid customer-reference dataset.
+    # 3. Prepare valid customer references.
     customers_df = spark.createDataFrame(
         [
             ("customer_001",),
@@ -113,7 +137,8 @@ def test_fault_detection_blocks_publication(
         ["customer_id"],
     )
 
-    # Execute the REAL Spark quality engine.
+    # 4. Execute Spark quality validation.
+    # Ground truth is NOT passed to the detector.
     report = evaluate_spark(
         orders_df,
         contract,
@@ -121,21 +146,21 @@ def test_fault_detection_blocks_publication(
         reference_data={"olist_customers": customers_df},
     )
 
+    # 5. Verify Spark detected a quality failure.
     assert report["status"] == "FAIL"
 
     failed_rules = {result["rule_id"] for result in report["results"] if result["status"] == "FAIL"}
 
-    assert expected_rule in failed_rules
+    # Compare detector output with held-out ground truth.
+    assert ground_truth.expected_rule in failed_rules
 
-    # Simulate a publication callback.
+    # 6. Verify the quality gate prevents publication.
     published = []
 
     def publish():
         published.append("silver_overwritten")
 
-    # Quality gate must reject Spark's failure report.
     with pytest.raises(QualityGateError):
         publish_if_quality_passed(report, publish)
 
-    # No Silver publication occurred.
     assert published == []
