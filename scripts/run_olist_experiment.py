@@ -1,14 +1,18 @@
 import json
+import os
 from dataclasses import asdict
 from pathlib import Path
 
 import yaml
 from pyspark.sql import SparkSession
 from pyspark.sql.types import StringType, StructField, StructType
+from sqlalchemy import create_engine
+from sqlalchemy.orm import Session
 
 from dataops.contracts.models import DatasetContract
 from dataops.evaluation.metrics import calculate_metrics
 from dataops.evaluation.runner import ExperimentScenario, run_experiment
+from dataops.evaluation.store import persist_experiment
 from dataops.faults.injector import inject_fault
 from dataops.faults.models import FaultSpec
 from dataops.quality.spark_engine import evaluate_spark
@@ -134,6 +138,26 @@ def main():
 
         experiment = run_experiment(scenarios, detector)
         metrics = calculate_metrics(experiment)
+        # Persist experiment results to PostgreSQL.
+        database_url = os.environ.get("DATABASE_URL")
+
+        if not database_url:
+            raise RuntimeError("DATABASE_URL is not configured")
+
+        engine = create_engine(database_url)
+
+        try:
+            with Session(engine) as session:
+                experiment_id = persist_experiment(
+                    session,
+                    experiment,
+                    metrics,
+                )
+
+            print(f"Persisted experiment: {experiment_id}")
+
+        finally:
+            engine.dispose()
 
         REPORT_DIR.mkdir(parents=True, exist_ok=True)
 

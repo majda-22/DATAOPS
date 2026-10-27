@@ -6,6 +6,7 @@ from sqlalchemy import (
     Boolean,
     CheckConstraint,
     DateTime,
+    Float,
     ForeignKey,
     Index,
     Integer,
@@ -299,4 +300,68 @@ class IncidentGroundTruth(Base):
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
+class EvaluationExperiment(Base):
+    __tablename__ = "experiments"
+    __table_args__ = {"schema": "eval"}
+
+    id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        primary_key=True,
+    )
+
+    metrics: Mapped[dict[str, Any]] = mapped_column(
+        JSONB,
+        nullable=False,
+    )
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+
+
+class EvaluationScenario(Base):
+    __tablename__ = "experiment_scenarios"
+    __table_args__ = (
+        UniqueConstraint(
+            "experiment_id",
+            "name",
+            name="uq_experiment_scenario_name",
+        ),
+        {"schema": "eval"},
+    )
+
+    id: Mapped[int] = mapped_column(
+        Integer,
+        primary_key=True,
+    )
+
+    experiment_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("eval.experiments.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+
+    name: Mapped[str] = mapped_column(
+        String(150),
+        nullable=False,
+    )
+
+    duration_seconds: Mapped[float] = mapped_column(
+        Float,
+        nullable=False,
+    )
+
+    evaluation: Mapped[dict[str, Any]] = mapped_column(
+        JSONB,
+        nullable=False,
+    )
+
+    ground_truth: Mapped[dict[str, Any] | None] = mapped_column(
+        JSONB,
+        nullable=True,
     )
