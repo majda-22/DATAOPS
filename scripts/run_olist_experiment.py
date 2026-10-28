@@ -10,6 +10,10 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
 from dataops.contracts.models import DatasetContract
+from dataops.evaluation.manifest import (
+    build_manifest,
+    manifest_to_dict,
+)
 from dataops.evaluation.metrics import calculate_metrics
 from dataops.evaluation.runner import ExperimentScenario, run_experiment
 from dataops.evaluation.store import persist_experiment
@@ -138,6 +142,14 @@ def main():
 
         experiment = run_experiment(scenarios, detector)
         metrics = calculate_metrics(experiment)
+        manifest = build_manifest(
+            dataset=contract.dataset,
+            contract_version=contract.version,
+            contract_path=CONTRACT_PATH,
+            detector_name="spark_quality_engine",
+            detector_version="1",
+            scenario_names=tuple(s.name for s in scenarios),
+        )
         # Persist experiment results to PostgreSQL.
         database_url = os.environ.get("DATABASE_URL")
 
@@ -163,6 +175,7 @@ def main():
 
         output = {
             "experiment_id": str(experiment.experiment_id),
+            "manifest": manifest_to_dict(manifest),
             "metrics": asdict(metrics),
             "scenarios": [
                 {
