@@ -1,8 +1,14 @@
+from uuid import uuid4
+
 import pytest
 from sqlalchemy import event, func, select
 from sqlalchemy.orm import Session
 
 from dataops.db.models import EvaluationExperiment, EvaluationScenario
+from dataops.evaluation.history import (
+    get_experiment_details,
+    list_experiments,
+)
 from dataops.evaluation.metrics import calculate_metrics
 from dataops.evaluation.runner import ExperimentScenario, run_experiment
 from dataops.evaluation.store import persist_experiment
@@ -217,3 +223,50 @@ def test_invalid_metrics_do_not_modify_existing_data(isolated_session):
 
     assert stored is not None
     assert stored.metrics == original_metrics
+
+
+def test_list_experiments_returns_saved_experiment(isolated_session):
+    experiment, metrics = make_test_experiment()
+
+    persist_experiment(isolated_session, experiment, metrics)
+
+    history = list_experiments(isolated_session, limit=20)
+
+    matching = [item for item in history if item["experiment_id"] == str(experiment.experiment_id)]
+
+    assert len(matching) == 1
+    assert matching[0]["metrics"]["total_scenarios"] == 2
+
+
+def test_get_experiment_details(isolated_session):
+    experiment, metrics = make_test_experiment()
+
+    persist_experiment(isolated_session, experiment, metrics)
+
+    details = get_experiment_details(
+        isolated_session,
+        experiment.experiment_id,
+    )
+
+    assert details is not None
+    assert details["experiment_id"] == str(experiment.experiment_id)
+    assert details["metrics"]["total_scenarios"] == 2
+    assert len(details["scenarios"]) == 2
+
+    names = {scenario["name"] for scenario in details["scenarios"]}
+
+    assert names == {"clean", "another_clean"}
+
+
+def test_missing_experiment_returns_none(isolated_session):
+    result = get_experiment_details(
+        isolated_session,
+        uuid4(),
+    )
+
+    assert result is None
+
+
+def test_invalid_history_limit_is_rejected(isolated_session):
+    with pytest.raises(ValueError, match="positive"):
+        list_experiments(isolated_session, limit=0)
