@@ -1,3 +1,6 @@
+import json
+import subprocess
+from collections.abc import Sequence
 from dataclasses import asdict, dataclass
 from hashlib import sha256
 from pathlib import Path
@@ -14,6 +17,8 @@ class ExperimentManifest:
     detector_version: str
     scenario_names: tuple[str, ...]
     random_seed: int | None = None
+    git_commit: str | None = None
+    input_sha256: str | None = None
 
 
 def build_manifest(
@@ -25,6 +30,8 @@ def build_manifest(
     detector_version: str,
     scenario_names: tuple[str, ...],
     random_seed: int | None = None,
+    git_commit: str | None = None,
+    input_sha256: str | None = None,
 ) -> ExperimentManifest:
     """Build a manifest using the exact contract file contents."""
 
@@ -53,8 +60,40 @@ def build_manifest(
         detector_version=detector_version,
         scenario_names=scenario_names,
         random_seed=random_seed,
+        git_commit=git_commit,
+        input_sha256=input_sha256,
     )
 
 
 def manifest_to_dict(manifest: ExperimentManifest) -> dict:
     return asdict(manifest)
+
+
+def fingerprint_records(
+    records: Sequence[dict[str, str | None]],
+) -> str:
+    """Generate a deterministic fingerprint of ordered records."""
+
+    serialized = json.dumps(
+        list(records),
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+    )
+
+    return sha256(serialized.encode("utf-8")).hexdigest()
+
+
+def get_git_commit(project_root: Path) -> str:
+    """Return the current Git revision."""
+
+    result = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=project_root,
+        capture_output=True,
+        text=True,
+        check=True,
+        timeout=10,
+    )
+
+    return result.stdout.strip()

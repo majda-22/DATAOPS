@@ -12,6 +12,8 @@ from sqlalchemy.orm import Session
 from dataops.contracts.models import DatasetContract
 from dataops.evaluation.manifest import (
     build_manifest,
+    fingerprint_records,
+    get_git_commit,
     manifest_to_dict,
 )
 from dataops.evaluation.metrics import calculate_metrics
@@ -142,6 +144,8 @@ def main():
 
         experiment = run_experiment(scenarios, detector)
         metrics = calculate_metrics(experiment)
+        input_fingerprint = fingerprint_records(valid_orders())
+        git_commit = get_git_commit(ROOT)
         manifest = build_manifest(
             dataset=contract.dataset,
             contract_version=contract.version,
@@ -149,6 +153,8 @@ def main():
             detector_name="spark_quality_engine",
             detector_version="1",
             scenario_names=tuple(s.name for s in scenarios),
+            git_commit=git_commit,
+            input_sha256=input_fingerprint,
         )
         # Persist experiment results to PostgreSQL.
         database_url = os.environ.get("DATABASE_URL")

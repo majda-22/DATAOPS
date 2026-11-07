@@ -1,6 +1,6 @@
 import pytest
 
-from dataops.evaluation.manifest import build_manifest
+from dataops.evaluation.manifest import build_manifest, fingerprint_records
 
 
 def test_manifest_records_contract_configuration(tmp_path):
@@ -69,3 +69,24 @@ def test_duplicate_scenarios_are_rejected(tmp_path):
             detector_version="1",
             scenario_names=("clean", "clean"),
         )
+
+
+def test_identical_records_have_same_fingerprint():
+    first = [{"order_id": "A1", "status": "delivered"}]
+    second = [{"status": "delivered", "order_id": "A1"}]
+
+    assert fingerprint_records(first) == fingerprint_records(second)
+
+
+def test_modified_records_change_fingerprint():
+    first = [{"order_id": "A1", "status": "delivered"}]
+    second = [{"order_id": "A1", "status": "canceled"}]
+
+    assert fingerprint_records(first) != fingerprint_records(second)
+
+
+def test_record_order_changes_fingerprint():
+    first = [{"order_id": "A1"}, {"order_id": "A2"}]
+    second = [{"order_id": "A2"}, {"order_id": "A1"}]
+
+    assert fingerprint_records(first) != fingerprint_records(second)
