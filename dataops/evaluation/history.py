@@ -31,6 +31,7 @@ def list_experiments(
             "experiment_id": str(experiment.id),
             "created_at": experiment.created_at.isoformat(),
             "metrics": experiment.metrics,
+            "manifest": experiment.manifest,
         }
         for experiment in experiments
     ]
@@ -59,6 +60,7 @@ def get_experiment_details(
         "experiment_id": str(experiment.id),
         "created_at": experiment.created_at.isoformat(),
         "metrics": experiment.metrics,
+        "manifest": experiment.manifest,
         "scenarios": [
             {
                 "name": scenario.name,

@@ -4,6 +4,7 @@ from uuid import UUID
 from sqlalchemy.orm import Session
 
 from dataops.db.models import EvaluationExperiment, EvaluationScenario
+from dataops.evaluation.manifest import ExperimentManifest, manifest_to_dict
 from dataops.evaluation.metrics import ExperimentMetrics
 from dataops.evaluation.runner import ExperimentResult
 
@@ -12,11 +13,18 @@ def persist_experiment(
     session: Session,
     experiment: ExperimentResult,
     metrics: ExperimentMetrics,
+    manifest: ExperimentManifest | None = None,
 ) -> UUID:
     """Persist an experiment and its scenario results atomically."""
 
     if metrics.total_scenarios != len(experiment.scenarios):
         raise ValueError("Experiment metrics do not match scenario count")
+
+    if manifest is not None:
+        actual_names = tuple(result.name for result in experiment.scenarios)
+
+        if manifest.scenario_names != actual_names:
+            raise ValueError("Manifest scenarios do not match experiment scenarios")
 
     with session.begin():
         existing = session.get(
@@ -31,6 +39,7 @@ def persist_experiment(
             EvaluationExperiment(
                 id=experiment.experiment_id,
                 metrics=asdict(metrics),
+                manifest=(manifest_to_dict(manifest) if manifest is not None else None),
             )
         )
 

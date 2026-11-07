@@ -1,3 +1,4 @@
+from pathlib import Path
 from uuid import uuid4
 
 import pytest
@@ -9,6 +10,7 @@ from dataops.evaluation.history import (
     get_experiment_details,
     list_experiments,
 )
+from dataops.evaluation.manifest import build_manifest
 from dataops.evaluation.metrics import calculate_metrics
 from dataops.evaluation.runner import ExperimentScenario, run_experiment
 from dataops.evaluation.store import persist_experiment
@@ -270,3 +272,44 @@ def test_missing_experiment_returns_none(isolated_session):
 def test_invalid_history_limit_is_rejected(isolated_session):
     with pytest.raises(ValueError, match="positive"):
         list_experiments(isolated_session, limit=0)
+
+
+def test_experiment_manifest_is_persisted(isolated_session, tmp_path: Path):
+    experiment, metrics = make_test_experiment()
+
+    contract_file = tmp_path / "orders.yaml"
+    contract_file.write_text(
+        "dataset: olist_orders\nversion: 3\n",
+        encoding="utf-8",
+    )
+
+    manifest = build_manifest(
+        dataset="olist_orders",
+        contract_version=3,
+        contract_path=contract_file,
+        detector_name="spark_quality_engine",
+        detector_version="1",
+        scenario_names=tuple(scenario.name for scenario in experiment.scenarios),
+    )
+
+    persist_experiment(
+        isolated_session,
+        experiment,
+        metrics,
+        manifest,
+    )
+
+    stored = isolated_session.get(
+        EvaluationExperiment,
+        experiment.experiment_id,
+    )
+
+    assert stored is not None
+    assert stored.manifest is not None
+    assert stored.manifest["dataset"] == "olist_orders"
+    assert stored.manifest["contract_version"] == 3
+    assert stored.manifest["contract_sha256"] == manifest.contract_sha256
+    assert stored.manifest["scenario_names"] == [
+        "clean",
+        "another_clean",
+    ]

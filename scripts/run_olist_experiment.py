@@ -164,6 +164,7 @@ def main():
                     session,
                     experiment,
                     metrics,
+                    manifest,
                 )
 
             print(f"Persisted experiment: {experiment_id}")
