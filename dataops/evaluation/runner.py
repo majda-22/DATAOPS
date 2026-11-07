@@ -4,6 +4,7 @@ from time import perf_counter
 from typing import Any
 from uuid import UUID, uuid4
 
+from dataops.diagnosis.evidence import QualityEvidence, build_quality_evidence
 from dataops.evaluation.detector import evaluate_detection
 from dataops.evaluation.models import DetectionEvaluation
 from dataops.faults.models import FaultGroundTruth
@@ -25,6 +26,7 @@ class ScenarioResult:
     name: str
     evaluation: DetectionEvaluation
     duration_seconds: float
+    evidence: QualityEvidence | None = None
 
 
 @dataclass(frozen=True)
@@ -63,6 +65,8 @@ def run_experiment(
 
         elapsed = perf_counter() - start
 
+        evidence = build_quality_evidence(report)
+
         # Ground truth is used only after detection finishes.
         evaluation = evaluate_detection(
             report,
@@ -74,6 +78,7 @@ def run_experiment(
                 name=scenario.name,
                 evaluation=evaluation,
                 duration_seconds=elapsed,
+                evidence=evidence,
             )
         )
 

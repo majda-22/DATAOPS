@@ -99,3 +99,28 @@ def test_duplicate_scenario_names_are_rejected():
 
     with pytest.raises(ValueError, match="unique"):
         run_experiment(scenarios, fake_detector)
+
+
+def test_runner_extracts_evidence_without_ground_truth():
+    report = {
+        "status": "FAIL",
+        "expected_rule": "secret_answer",
+        "results": [
+            {"rule_id": "order_id_unique", "status": "FAIL"},
+        ],
+    }
+
+    scenario = ExperimentScenario(
+        name="duplicate_key",
+        data=[{"order_id": "A1"}],
+        ground_truth=None,
+    )
+
+    result = run_experiment([scenario], detector=lambda _: report)
+
+    evidence = result.scenarios[0].evidence
+
+    assert evidence is not None
+    assert evidence.status == "FAIL"
+    assert evidence.failed_rules == ("order_id_unique",)
+    assert not hasattr(evidence, "expected_rule")
