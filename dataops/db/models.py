@@ -366,6 +366,11 @@ class EvaluationScenario(Base):
         nullable=False,
     )
 
+    evidence: Mapped[dict[str, Any] | None] = mapped_column(
+        JSONB,
+        nullable=True,
+    )
+
     ground_truth: Mapped[dict[str, Any] | None] = mapped_column(
         JSONB,
         nullable=True,

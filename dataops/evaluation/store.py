@@ -50,6 +50,7 @@ def persist_experiment(
                     name=result.name,
                     duration_seconds=result.duration_seconds,
                     evaluation=asdict(result.evaluation),
+                    evidence=(asdict(result.evidence) if result.evidence is not None else None),
                     ground_truth=None,
                 )
             )
