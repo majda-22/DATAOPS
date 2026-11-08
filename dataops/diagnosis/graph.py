@@ -64,10 +64,21 @@ def build_diagnosis_graph(load_evidence: EvidenceLoader):
                 "summary": "No failed quality rules found.",
             }
         else:
+            hypotheses = []
+            for finding in state.get("findings", []):
+                if finding["rule_type"] == "unique":
+                    hypotheses.extend(
+                        [
+                            "Duplicate records may exist in the source dataset.",
+                            "The ingestion pipeline may have processed the same record multiple times.",
+                            "A pipeline retry may have caused duplicate records to be inserted.",
+                        ]
+                    )
             diagnosis = {
                 "status": "failure_detected",
                 "suspected_rules": failed_rules,
                 "summary": ("Quality checks failed: " + ", ".join(failed_rules)),
+                "hypotheses": hypotheses,
             }
 
         return {"diagnosis": diagnosis}
@@ -80,7 +91,7 @@ def build_diagnosis_graph(load_evidence: EvidenceLoader):
 
     graph.add_edge(START, "fetch_evidence")
     graph.add_edge("fetch_evidence", "investigate_failure")
-    graph.add_edge("fetch_evidence", "analyze_failure")
+    graph.add_edge("investigate_failure", "analyze_failure")
     graph.add_edge("analyze_failure", END)
 
     return graph.compile()

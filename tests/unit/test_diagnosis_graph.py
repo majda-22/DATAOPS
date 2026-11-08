@@ -66,7 +66,7 @@ def test_graph_calculates_violation_rate():
             "scenario_name": "duplicate_key",
         }
     )
-
+    assert len(result["diagnosis"]["hypotheses"]) == 3
     assert result["findings"] == [
         {
             "rule_id": "order_id_unique",
