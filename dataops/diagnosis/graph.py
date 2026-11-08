@@ -3,6 +3,7 @@ from typing import TypedDict
 from uuid import UUID
 
 from langgraph.graph import END, START, StateGraph
+from langgraph.graph.state import CompiledStateGraph
 
 
 class DiagnosisState(TypedDict, total=False):
@@ -11,12 +12,17 @@ class DiagnosisState(TypedDict, total=False):
     evidence: dict
     findings: list[dict]
     diagnosis: dict
+    pipeline_run_id: str | None
+    pipeline_run: dict | None
 
 
 EvidenceLoader = Callable[[UUID, str], dict | None]
+PipelineRunLoader = Callable[[UUID], dict | None]
 
 
-def build_diagnosis_graph(load_evidence: EvidenceLoader):
+def build_diagnosis_graph(
+    load_evidence: EvidenceLoader, load_pipeline_run: PipelineRunLoader | None = None
+) -> CompiledStateGraph[DiagnosisState]:
     """Build a diagnosis workflow with restricted evidence access."""
 
     def fetch_evidence(state: DiagnosisState) -> dict:
@@ -53,6 +59,18 @@ def build_diagnosis_graph(load_evidence: EvidenceLoader):
 
         return {"findings": findings}
 
+    def inspect_pipeline_run(state: DiagnosisState) -> dict:
+        """Inspect only an explicitly associated pipeline run."""
+
+        run_id = state.get("pipeline_run_id")
+
+        if run_id is None or load_pipeline_run is None:
+            return {"pipeline_run": None}
+
+        pipeline_run = load_pipeline_run(UUID(run_id))
+
+        return {"pipeline_run": pipeline_run}
+
     def analyze_failure(state: DiagnosisState) -> dict:
         evidence = state["evidence"]
         failed_rules = evidence["failed_rules"]
@@ -88,10 +106,12 @@ def build_diagnosis_graph(load_evidence: EvidenceLoader):
     graph.add_node("fetch_evidence", fetch_evidence)
     graph.add_node("investigate_failure", investigate_failure)
     graph.add_node("analyze_failure", analyze_failure)
+    graph.add_node("inspect_pipeline_run", inspect_pipeline_run)
 
     graph.add_edge(START, "fetch_evidence")
     graph.add_edge("fetch_evidence", "investigate_failure")
-    graph.add_edge("investigate_failure", "analyze_failure")
+    graph.add_edge("investigate_failure", "inspect_pipeline_run")
+    graph.add_edge("inspect_pipeline_run", "analyze_failure")
     graph.add_edge("analyze_failure", END)
 
     return graph.compile()
