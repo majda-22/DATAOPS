@@ -9,6 +9,7 @@ class DiagnosisState(TypedDict, total=False):
     experiment_id: str
     scenario_name: str
     evidence: dict
+    findings: list[dict]
     diagnosis: dict
 
 
@@ -28,6 +29,29 @@ def build_diagnosis_graph(load_evidence: EvidenceLoader):
             raise ValueError("Scenario evidence not found")
 
         return {"evidence": evidence}
+
+    def investigate_failure(state: DiagnosisState) -> dict:
+        """Analyze observable quality violations."""
+
+        findings = []
+
+        for check in state["evidence"].get("failed_checks", []):
+            checked_rows = check["checked_rows"]
+            failed_rows = check["failed_rows"]
+
+            violation_rate = round(failed_rows / checked_rows, 4) if checked_rows > 0 else None
+
+            findings.append(
+                {
+                    "rule_id": check["rule_id"],
+                    "rule_type": check["rule_type"],
+                    "failed_rows": failed_rows,
+                    "checked_rows": checked_rows,
+                    "violation_rate": violation_rate,
+                }
+            )
+
+        return {"findings": findings}
 
     def analyze_failure(state: DiagnosisState) -> dict:
         evidence = state["evidence"]
@@ -51,9 +75,11 @@ def build_diagnosis_graph(load_evidence: EvidenceLoader):
     graph = StateGraph(DiagnosisState)
 
     graph.add_node("fetch_evidence", fetch_evidence)
+    graph.add_node("investigate_failure", investigate_failure)
     graph.add_node("analyze_failure", analyze_failure)
 
     graph.add_edge(START, "fetch_evidence")
+    graph.add_edge("fetch_evidence", "investigate_failure")
     graph.add_edge("fetch_evidence", "analyze_failure")
     graph.add_edge("analyze_failure", END)
 

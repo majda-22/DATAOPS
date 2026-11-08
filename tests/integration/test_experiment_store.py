@@ -6,7 +6,7 @@ from sqlalchemy import event, func, select
 from sqlalchemy.orm import Session
 
 from dataops.db.models import EvaluationExperiment, EvaluationScenario
-from dataops.diagnosis.evidence import QualityEvidence
+from dataops.diagnosis.evidence import FailedCheck, QualityEvidence
 from dataops.diagnosis.repository import get_scenario_evidence
 from dataops.evaluation.history import (
     get_experiment_details,
@@ -360,6 +360,7 @@ def test_scenario_evidence_is_persisted(pg_engine):
         assert saved.evidence == {
             "status": "FAIL",
             "failed_rules": ["order_id_unique"],
+            "failed_checks": [],
         }
         assert "expected_rule" not in saved.evidence
 
@@ -404,8 +405,68 @@ def test_retrieve_evidence_without_ground_truth(pg_engine):
         assert evidence == {
             "status": "FAIL",
             "failed_rules": ["order_id_unique"],
+            "failed_checks": [],
         }
 
         assert "expected_rule" not in evidence
         assert "expected_rule_hit" not in evidence
         assert "ground_truth" not in evidence
+
+
+def test_retrieve_detailed_evidence(pg_engine):
+    scenario = ScenarioResult(
+        name="duplicate_key",
+        duration_seconds=0.5,
+        evaluation=DetectionEvaluation(
+            expected_rule="order_id_unique",
+            detected_rules=("order_id_unique",),
+            fault_present=True,
+            detected=True,
+            expected_rule_hit=True,
+            false_positive=False,
+            unexpected_rules=(),
+        ),
+        evidence=QualityEvidence(
+            status="FAIL",
+            failed_rules=("order_id_unique",),
+            failed_checks=(
+                FailedCheck(
+                    rule_id="order_id_unique",
+                    rule_type="unique",
+                    failed_rows=2,
+                    checked_rows=100,
+                ),
+            ),
+        ),
+    )
+
+    experiment = ExperimentResult(
+        experiment_id=uuid4(),
+        scenarios=(scenario,),
+    )
+
+    with Session(pg_engine) as session:
+        persist_experiment(
+            session,
+            experiment,
+            calculate_metrics(experiment),
+        )
+
+        evidence = get_scenario_evidence(
+            session,
+            experiment.experiment_id,
+            "duplicate_key",
+        )
+
+    assert evidence == {
+        "status": "FAIL",
+        "failed_rules": ["order_id_unique"],
+        "failed_checks": [
+            {
+                "rule_id": "order_id_unique",
+                "rule_type": "unique",
+                "failed_rows": 2,
+                "checked_rows": 100,
+            }
+        ],
+    }

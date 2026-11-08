@@ -38,7 +38,15 @@ def main() -> None:
             }
         )
 
-        print(json.dumps(result["diagnosis"], indent=2))
+        print(
+            json.dumps(
+                {
+                    "diagnosis": result["diagnosis"],
+                    "findings": result.get("findings", []),
+                },
+                indent=2,
+            )
+        )
 
     finally:
         engine.dispose()

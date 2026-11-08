@@ -27,4 +27,13 @@ def get_scenario_evidence(
     return {
         "status": evidence["status"],
         "failed_rules": list(evidence["failed_rules"]),
+        "failed_checks": [
+            {
+                "rule_id": check["rule_id"],
+                "rule_type": check["rule_type"],
+                "failed_rows": check["failed_rows"],
+                "checked_rows": check["checked_rows"],
+            }
+            for check in evidence.get("failed_checks", [])
+        ],
     }
