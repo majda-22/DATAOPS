@@ -2,7 +2,6 @@ from pathlib import Path
 
 import pytest
 import yaml
-from pyspark.sql import SparkSession
 from pyspark.sql.types import StringType, StructField, StructType
 
 from dataops.contracts.models import DatasetContract
@@ -30,16 +29,6 @@ COLUMNS = [
 ]
 
 SCHEMA = StructType([StructField(name, StringType(), True) for name in COLUMNS])
-
-
-@pytest.fixture(scope="module")
-def spark():
-    session = (
-        SparkSession.builder.master("local[2]").appName("olist-fault-injection-tests").getOrCreate()
-    )
-
-    yield session
-    session.stop()
 
 
 @pytest.fixture(scope="module")

@@ -1,15 +1,6 @@
 import pytest
-from pyspark.sql import SparkSession
 
 from dataops.pipelines.olist_silver import transform_olist_orders
-
-
-@pytest.fixture(scope="module")
-def spark():
-    session = SparkSession.builder.master("local[2]").appName("olist-silver-tests").getOrCreate()
-
-    yield session
-    session.stop()
 
 
 def test_valid_timestamps_are_converted(spark):

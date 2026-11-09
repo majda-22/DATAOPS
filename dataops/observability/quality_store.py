@@ -4,6 +4,7 @@ from uuid import UUID
 from sqlalchemy.orm import Session
 
 from dataops.db.models import PipelineRun, QualityResult
+from dataops.diagnosis.incident_service import create_incident_from_quality_report
 
 QUALITY_STATUS = {
     "PASS": "passed",
@@ -88,5 +89,12 @@ def persist_quality_report(
                 },
             )
             session.add(result)
+
+        if failed:
+            create_incident_from_quality_report(
+                session,
+                pipeline_run_id=run_id,
+                report=report,
+            )
 
     return run_id

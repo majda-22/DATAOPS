@@ -1,15 +1,7 @@
 import pytest
-from pyspark.sql import SparkSession
 
 from dataops.contracts.models import DatasetContract, ForeignKeyContract
 from dataops.quality.spark_engine import evaluate_spark
-
-
-@pytest.fixture(scope="module")
-def spark():
-    session = SparkSession.builder.master("local[2]").appName("spark-quality-tests").getOrCreate()
-    yield session
-    session.stop()
 
 
 @pytest.fixture

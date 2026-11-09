@@ -1,33 +1,9 @@
 import pytest
-from delta import configure_spark_with_delta_pip
-from pyspark.sql import SparkSession
 
 from dataops.pipelines.quality_gate import (
     QualityGateError,
     publish_if_quality_passed,
 )
-
-
-@pytest.fixture(scope="module")
-def spark():
-    builder = (
-        SparkSession.builder.master("local[2]")
-        .appName("silver-quality-gate-integration")
-        .config(
-            "spark.sql.extensions",
-            "io.delta.sql.DeltaSparkSessionExtension",
-        )
-        .config(
-            "spark.sql.catalog.spark_catalog",
-            "org.apache.spark.sql.delta.catalog.DeltaCatalog",
-        )
-    )
-
-    session = configure_spark_with_delta_pip(builder).getOrCreate()
-
-    yield session
-
-    session.stop()
 
 
 def test_failed_quality_gate_preserves_silver_delta(spark, tmp_path):

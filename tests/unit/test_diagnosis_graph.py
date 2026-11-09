@@ -137,3 +137,104 @@ def test_graph_does_not_guess_pipeline_run():
     )
 
     assert result["pipeline_run"] is None
+
+
+def test_graph_uses_pipeline_run_from_incident():
+    run_id = uuid4()
+    incident_id = 42
+    loaded_runs = []
+
+    def fake_evidence_loader(experiment_id, scenario_name):
+        return {
+            "status": "FAIL",
+            "failed_rules": ["order_id_unique"],
+            "failed_checks": [],
+        }
+
+    def fake_incident_loader(requested_id):
+        assert requested_id == incident_id
+        return {
+            "incident_id": requested_id,
+            "pipeline_run_id": str(run_id),
+            "title": "Order quality failure",
+            "severity": "high",
+            "status": "open",
+        }
+
+    def fake_incident_evidence_loader(incident_id):
+        assert incident_id == 42
+        return {
+            "status": "FAIL",
+            "failed_rules": ["order_id_unique"],
+            "failed_checks": [],
+        }
+
+    def fake_pipeline_loader(requested_id):
+        loaded_runs.append(requested_id)
+        return {
+            "run_id": str(requested_id),
+            "status": "failed",
+        }
+
+    graph = build_diagnosis_graph(
+        fake_evidence_loader,
+        load_pipeline_run=fake_pipeline_loader,
+        load_incident=fake_incident_loader,
+        load_incident_evidence=fake_incident_evidence_loader,
+    )
+
+    result = graph.invoke(
+        {
+            "incident_id": incident_id,
+            "experiment_id": str(uuid4()),
+            "scenario_name": "duplicate_key",
+        }
+    )
+
+    assert result["incident"]["incident_id"] == incident_id
+    assert loaded_runs == [run_id]
+    assert result["pipeline_run"]["run_id"] == str(run_id)
+
+
+def test_graph_supports_incident_only_diagnosis():
+    run_id = uuid4()
+
+    def fake_experiment_loader(experiment_id, scenario_name):
+        raise AssertionError("Experiment loader must not be called")
+
+    def fake_incident_loader(incident_id):
+        return {
+            "incident_id": incident_id,
+            "pipeline_run_id": str(run_id),
+            "title": "Order quality failure",
+            "severity": "high",
+            "status": "open",
+        }
+
+    def fake_incident_evidence_loader(incident_id):
+        return {
+            "status": "FAIL",
+            "failed_rules": ["order_id_unique"],
+            "failed_checks": [],
+        }
+
+    def fake_pipeline_loader(requested_id):
+        return {
+            "run_id": str(requested_id),
+            "pipeline_name": "olist_bronze_quality",
+            "status": "failed",
+        }
+
+    graph = build_diagnosis_graph(
+        fake_experiment_loader,
+        load_pipeline_run=fake_pipeline_loader,
+        load_incident=fake_incident_loader,
+        load_incident_evidence=fake_incident_evidence_loader,
+    )
+
+    result = graph.invoke({"incident_id": 42})
+
+    assert result["incident"]["incident_id"] == 42
+    assert result["pipeline_run"]["run_id"] == str(run_id)
+    assert result["diagnosis"]["status"] == "failure_detected"
+    assert result["diagnosis"]["suspected_rules"] == ["order_id_unique"]
